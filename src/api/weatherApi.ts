@@ -54,6 +54,7 @@ export async function fetchRegionWeather(region: string): Promise<WeatherData | 
 
   try {
     const url = new URL(BASE);
+    url.search = '';
     url.searchParams.set('latitude', String(coords.lat));
     url.searchParams.set('longitude', String(coords.lng));
     url.searchParams.set('current_weather', 'true');

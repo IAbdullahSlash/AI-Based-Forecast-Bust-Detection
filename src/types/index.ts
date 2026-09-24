@@ -19,6 +19,7 @@ export interface RegionalData {
   casesWithLargeError: number;
   historicalBustFrequency: number;
   keyReasons: string[];
+  unit?: string;
 }
 
 export interface HistoricalAnalogue {
@@ -28,6 +29,22 @@ export interface HistoricalAnalogue {
   similarity: number;
   forecastError: number;
   bustStatus: 'Large Error' | 'Normal' | 'Forecast Bust';
+  unit?: string;
+}
+
+export function getVariableUnit(variable: ForecastVariable): string {
+  switch (variable) {
+    case 'rainfall':
+      return 'mm';
+    case 'temperature':
+      return '°C';
+    case 'wind':
+      return 'km/h';
+    case 'pressure':
+      return 'hPa';
+    default:
+      return '';
+  }
 }
 
 export interface RegionFullData {

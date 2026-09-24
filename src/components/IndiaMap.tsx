@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MapPin, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import {
-  STATE_POSITIONS, STATE_DATA,
-  getConfidence, getBustProb, getForecastVal, getConfidenceByDay,
+  STATE_POSITIONS,
+  getRegionData,
+  getConfidence, getBustProb, getForecastVal,
 } from '../data/mockData';
-import { ForecastVariable, Confidence } from '../types';
+import { ForecastVariable, Confidence, getVariableUnit } from '../types';
 
 function confidenceColor(conf: Confidence): string {
   return conf === 'high' ? '#22c55e' : conf === 'medium' ? '#eab308' : '#ef4444';
@@ -173,12 +174,12 @@ export default function IndiaMap({
   }, [onHoverRegion]);
 
   const getRegionInfo = (name: string) => {
-    const d = STATE_DATA[name];
+    const d = getRegionData(name, variable);
     if (!d) return null;
     return {
-      conf: getConfidence(day, name),
-      bustProb: getBustProb(day, name),
-      forecastVal: getForecastVal(day, name),
+      conf: getConfidence(day, name, variable),
+      bustProb: getBustProb(day, name, variable),
+      forecastVal: getForecastVal(day, name, variable),
       baseData: d,
     };
   };
@@ -375,7 +376,7 @@ export default function IndiaMap({
                   {tooltipRegion}
                 </div>
                 <div className="text-slate-300 text-[11px] space-y-0.5">
-                  <div className="flex justify-between gap-6"><span>Forecast</span><span className="font-medium">{info.forecastVal} mm</span></div>
+                  <div className="flex justify-between gap-6"><span>Forecast</span><span className="font-medium">{info.forecastVal} {getVariableUnit(variable)}</span></div>
                   <div className="flex justify-between gap-6"><span>Bust Prob</span><span className="font-medium">{info.bustProb}%</span></div>
                   <div className="flex justify-between gap-6"><span>Confidence</span><span className="font-medium" style={{ color: confidenceColor(info.conf) }}>{info.conf.toUpperCase()}</span></div>
                 </div>

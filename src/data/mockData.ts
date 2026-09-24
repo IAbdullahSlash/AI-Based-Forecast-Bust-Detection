@@ -6,6 +6,8 @@ import {
   StatePosition,
   RegionFullData,
   Confidence,
+  ForecastVariable,
+  getVariableUnit,
 } from '../types';
 
 export const STATE_POSITIONS: StatePosition[] = [
@@ -240,21 +242,182 @@ export const EXPLANATIONS: Record<string, string> = {
 const defaultExplanation =
   'Forecast confidence for this region is based on current atmospheric pattern similarity to historical cases. The combination of model ensemble spread, historical forecast error patterns, and atmospheric variability determines the confidence level. Key factors include ensemble divergence, seasonal transition effects, and observational network density.';
 
-export function getExplanation(region: string): string {
-  return EXPLANATIONS[region] || defaultExplanation;
+const MOUNTAIN_REGIONS = new Set([
+  'Jammu & Kashmir',
+  'Himachal Pradesh',
+  'Uttarakhand',
+  'Sikkim',
+  'Arunachal Pradesh',
+]);
+
+const COASTAL_REGIONS = new Set([
+  'Gujarat',
+  'Maharashtra',
+  'Goa',
+  'Karnataka',
+  'Kerala',
+  'Tamil Nadu',
+  'Andhra Pradesh',
+  'Odisha',
+  'West Bengal',
+]);
+
+export function getRegionData(region: string, variable: ForecastVariable = 'rainfall'): RegionalData {
+  const base = STATE_DATA[region] || STATE_DATA['Odisha'];
+
+  if (variable === 'rainfall') {
+    return { ...base, unit: 'mm' };
+  }
+
+  if (variable === 'temperature') {
+    let tempVal = 32;
+    let tempErr = 2.4;
+    if (MOUNTAIN_REGIONS.has(region)) {
+      tempVal = 18 + (base.forecastValue % 7);
+      tempErr = 1.6 + Number(((base.historicalMeanError % 10) * 0.1).toFixed(1));
+    } else if (COASTAL_REGIONS.has(region)) {
+      tempVal = 29 + (base.forecastValue % 5);
+      tempErr = 1.9 + Number(((base.historicalMeanError % 8) * 0.1).toFixed(1));
+    } else {
+      tempVal = region === 'Rajasthan' ? 41 : 34 + (base.forecastValue % 8);
+      tempErr = 2.4 + Number(((base.historicalMeanError % 12) * 0.1).toFixed(1));
+    }
+
+    return {
+      ...base,
+      forecastValue: tempVal,
+      historicalMeanError: Number(tempErr.toFixed(1)),
+      unit: '°C',
+      keyReasons: [
+        'High cloud albedo and radiative balance uncertainty',
+        'Microclimate surface boundary layer divergence',
+        'Large diurnal temperature range ensemble spread',
+        'Surface soil moisture flux and sensible heat variations',
+      ],
+    };
+  }
+
+  if (variable === 'wind') {
+    let windVal = 22;
+    let windErr = 5.2;
+    if (COASTAL_REGIONS.has(region)) {
+      windVal = 32 + (base.forecastValue % 18);
+      windErr = 5.5 + Number(((base.historicalMeanError % 15) * 0.2).toFixed(1));
+    } else if (MOUNTAIN_REGIONS.has(region)) {
+      windVal = 24 + (base.forecastValue % 14);
+      windErr = 4.8 + Number(((base.historicalMeanError % 12) * 0.2).toFixed(1));
+    } else {
+      windVal = 14 + (base.forecastValue % 12);
+      windErr = 3.2 + Number(((base.historicalMeanError % 10) * 0.15).toFixed(1));
+    }
+
+    return {
+      ...base,
+      forecastValue: windVal,
+      historicalMeanError: Number(windErr.toFixed(1)),
+      unit: 'km/h',
+      keyReasons: [
+        'Sub-grid convective gust parameterization limits',
+        'Land-sea thermal contrast and breeze boundary shift',
+        'Turbulent kinetic energy dissipation variance in NWP',
+        'Topographic funneling and surface drag roughness',
+      ],
+    };
+  }
+
+  // Pressure
+  const pressVal = 1006 + (base.forecastValue % 8);
+  const pressErr = Number((1.6 + (base.historicalMeanError % 15) * 0.1).toFixed(1));
+
+  return {
+    ...base,
+    forecastValue: pressVal,
+    historicalMeanError: pressErr,
+    unit: 'hPa',
+    keyReasons: [
+      'Synoptic pressure trough position oscillation',
+      'Cyclonic depression central isobar deepening variance',
+      'Semi-diurnal atmospheric solar tide phase shifts',
+      'Cross-equatorial pressure gradient anomalies',
+    ],
+  };
 }
 
-export function getAnalogueData(region: string): HistoricalAnalogue[] {
-  return ANALOGUES[region] || ANALOGUES['Odisha'] || [];
+export function getAnalogueData(region: string, variable: ForecastVariable = 'rainfall'): HistoricalAnalogue[] {
+  const baseAnalogues = ANALOGUES[region] || ANALOGUES['Odisha'] || [];
+
+  if (variable === 'rainfall') {
+    return baseAnalogues.map(a => ({ ...a, unit: 'mm' }));
+  }
+
+  if (variable === 'temperature') {
+    const types = [
+      'Severe Heatwave Event',
+      'Pre-Monsoon Thermal Spike',
+      'Western Disturbance Cold Drop',
+      'Diurnal Temperature Anomaly',
+      'Summer Continental Heatwave',
+    ];
+    return baseAnalogues.map((a, i) => ({
+      ...a,
+      eventType: types[i % types.length],
+      forecastError: Number((1.8 + (a.forecastError % 25) * 0.15).toFixed(1)),
+      unit: '°C',
+    }));
+  }
+
+  if (variable === 'wind') {
+    const types = [
+      'Cyclonic Gale Surge',
+      'Pre-Monsoon Squall Line',
+      'Coastal Wind Event',
+      'Valley Jet Anomaly',
+      'Monsoon Boundary Gust',
+    ];
+    return baseAnalogues.map((a, i) => ({
+      ...a,
+      eventType: types[i % types.length],
+      forecastError: Math.round(7 + (a.forecastError % 30) * 0.4),
+      unit: 'km/h',
+    }));
+  }
+
+  // Pressure
+  const types = [
+    'Deep Depression Trough',
+    'Synoptic Barometric Drop',
+    'Coastal Pressure Surge',
+    'Monsoon Trough Shift',
+    'Low Pressure System Transit',
+  ];
+  return baseAnalogues.map((a, i) => ({
+    ...a,
+    eventType: types[i % types.length],
+    forecastError: Number((1.4 + (a.forecastError % 20) * 0.12).toFixed(1)),
+    unit: 'hPa',
+  }));
 }
 
-export function getRegionData(region: string): RegionalData {
-  return STATE_DATA[region] || STATE_DATA['Odisha'];
+export function getExplanation(region: string, variable: ForecastVariable = 'rainfall'): string {
+  if (variable === 'rainfall') {
+    return EXPLANATIONS[region] || defaultExplanation;
+  }
+
+  if (variable === 'temperature') {
+    return `Forecast confidence for surface temperature over ${region} is constrained by local radiation balance uncertainty, surface albedo variation across rural-urban interfaces, and numerical model sensitivity to soil moisture feedback during diurnal heating phases.`;
+  }
+
+  if (variable === 'wind') {
+    return `Forecast confidence for wind speed over ${region} is influenced by complex boundary-layer friction, shifting mesoscale pressure gradients, and sub-grid parameterization of turbulent gusts and convective downdrafts.`;
+  }
+
+  return `Forecast confidence for surface pressure over ${region} is impacted by synoptic barometric trough oscillation, model divergence on low-pressure system deepening rates, and seasonal monsoon trough displacement.`;
 }
 
-export function getSummaryStats(): SummaryStats {
+export function getSummaryStats(variable: ForecastVariable = 'rainfall'): SummaryStats {
   let high = 0, medium = 0, low = 0;
-  Object.values(STATE_DATA).forEach((d) => {
+  Object.keys(STATE_DATA).forEach((region) => {
+    const d = getRegionData(region, variable);
     if (d.confidence === 'high') high++;
     else if (d.confidence === 'medium') medium++;
     else low++;
@@ -262,34 +425,47 @@ export function getSummaryStats(): SummaryStats {
   return { regionsAnalyzed: Object.keys(STATE_DATA).length, highConfidence: high, mediumConfidence: medium, lowConfidence: low };
 }
 
-export function getConfidence(day: number, region: string): Confidence {
-  const cb = getConfidenceByDay();
-  return cb[day]?.[region]?.confidence || 'medium';
-}
-
-export function getBustProb(day: number, region: string): number {
-  const cb = getConfidenceByDay();
-  return cb[day]?.[region]?.bustProbability || 50;
-}
-
-export function getForecastVal(day: number, region: string): number {
-  const cb = getConfidenceByDay();
-  return cb[day]?.[region]?.forecastValue || 100;
-}
-
-export function getConfidenceByDay(): ConfidenceByDay {
+export function getConfidenceByDay(variable: ForecastVariable = 'rainfall'): ConfidenceByDay {
   const data: ConfidenceByDay = {};
   for (let day = 1; day <= 10; day++) {
     data[day] = {};
     Object.entries(STATE_DATA).forEach(([region, d]) => {
-      const baseBust = d.bustProbability;
+      const regData = getRegionData(region, variable);
+      const baseBust = regData.bustProbability;
       const dayVariation = Math.sin(day * 0.5 + Object.keys(STATE_DATA).indexOf(region)) * 15;
       const bustProb = Math.min(95, Math.max(5, Math.round(baseBust + dayVariation)));
       let confidence: Confidence = 'medium';
       if (bustProb < 40) confidence = 'high';
       else if (bustProb > 60) confidence = 'low';
-      data[day][region] = { confidence, bustProbability: bustProb, forecastValue: Math.round(d.forecastValue * (0.8 + Math.random() * 0.4)) };
+
+      let val = Math.round(regData.forecastValue * (0.8 + Math.random() * 0.4));
+      if (variable === 'pressure') {
+        val = Math.round(regData.forecastValue + Math.sin(day + Object.keys(STATE_DATA).indexOf(region)) * 2);
+      } else if (variable === 'temperature') {
+        val = Math.round(regData.forecastValue + Math.sin(day * 0.8) * 3);
+      }
+
+      data[day][region] = {
+        confidence,
+        bustProbability: bustProb,
+        forecastValue: val,
+      };
     });
   }
   return data;
+}
+
+export function getConfidence(day: number, region: string, variable: ForecastVariable = 'rainfall'): Confidence {
+  const cb = getConfidenceByDay(variable);
+  return cb[day]?.[region]?.confidence || 'medium';
+}
+
+export function getBustProb(day: number, region: string, variable: ForecastVariable = 'rainfall'): number {
+  const cb = getConfidenceByDay(variable);
+  return cb[day]?.[region]?.bustProbability || 50;
+}
+
+export function getForecastVal(day: number, region: string, variable: ForecastVariable = 'rainfall'): number {
+  const cb = getConfidenceByDay(variable);
+  return cb[day]?.[region]?.forecastValue || 100;
 }

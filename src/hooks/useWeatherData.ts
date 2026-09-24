@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchAllRegionsWeather, fetchRegionWeather, WeatherData, REGION_COORDINATES,
 } from '../api/weatherApi';
-import { STATE_POSITIONS } from '../data/mockData';
 
 interface UseWeatherDataReturn {
   weatherData: Map<string, WeatherData>;

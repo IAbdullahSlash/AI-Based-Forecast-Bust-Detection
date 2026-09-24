@@ -4,7 +4,7 @@ import {
   RefreshCw, Zap, AlertTriangle, ChevronDown, Sun, Cloud, Layers, Radio, Activity, CheckCircle2,
   ThermometerIcon, Droplets, WindIcon, GaugeIcon, Satellite, CloudDrizzle, TrendingUp,
 } from 'lucide-react';
-import { ForecastVariable, Confidence } from './types';
+import { ForecastVariable, Confidence, getVariableUnit } from './types';
 import {
   STATE_POSITIONS,
   STATE_DATA,
@@ -51,31 +51,31 @@ function mapColor(mode: string, conf: Confidence, prob: number): string {
   return bustColor(prob);
 }
 
-function getConfidence(day: number, region: string): Confidence {
-  const cb = getConfidenceByDay();
+function getConfidence(day: number, region: string, variable: ForecastVariable = 'rainfall'): Confidence {
+  const cb = getConfidenceByDay(variable);
   return cb[day]?.[region]?.confidence || 'medium';
 }
 
-function getBustProb(day: number, region: string): number {
-  const cb = getConfidenceByDay();
+function getBustProb(day: number, region: string, variable: ForecastVariable = 'rainfall'): number {
+  const cb = getConfidenceByDay(variable);
   return cb[day]?.[region]?.bustProbability || 50;
 }
 
-function getForecastVal(day: number, region: string): number {
-  const cb = getConfidenceByDay();
+function getForecastVal(day: number, region: string, variable: ForecastVariable = 'rainfall'): number {
+  const cb = getConfidenceByDay(variable);
   return cb[day]?.[region]?.forecastValue || 100;
 }
 
 function SummaryCards({ day, variable }: { day: number; variable: ForecastVariable }) {
-  const stats = useMemo(() => getSummaryStats(), []);
+  const stats = useMemo(() => getSummaryStats(variable), [variable]);
   const summary = useMemo(() => {
     let h = 0, m = 0, l = 0;
     STATE_POSITIONS.forEach((s) => {
-      const c = getConfidence(day, s.name);
+      const c = getConfidence(day, s.name, variable);
       if (c === 'high') h++; else if (c === 'medium') m++; else l++;
     });
     return { total: STATE_POSITIONS.length, high: h, med: m, low: l };
-  }, [day]);
+  }, [day, variable]);
 
   return (
     <div className="grid grid-cols-4 gap-3">
@@ -98,7 +98,7 @@ function SummaryCards({ day, variable }: { day: number; variable: ForecastVariab
   );
 }
 
-function ForecastTimeline({ day, setDay }: { day: number; setDay: (d: number) => void }) {
+function ForecastTimeline({ day, setDay, variable }: { day: number; setDay: (d: number) => void; variable: ForecastVariable }) {
   return (
     <div className="card p-3">
       <div className="flex items-center gap-2 mb-2">
@@ -109,7 +109,7 @@ function ForecastTimeline({ day, setDay }: { day: number; setDay: (d: number) =>
         {DAYS.map((d) => {
           let h = 0, m = 0, l = 0;
           STATE_POSITIONS.forEach((s) => {
-            const c = getConfidence(d, s.name);
+            const c = getConfidence(d, s.name, variable);
             if (c === 'high') h++; else if (c === 'medium') m++; else l++;
           });
           const conf = l > m && l > h ? 'low' : h > m ? 'high' : 'medium';
@@ -174,9 +174,10 @@ function ConfidenceGauge({ value, label, color }: { value: number; label: string
 }
 
 function RegionDetailPanel({ region, day, variable, onClose }: { region: string; day: number; variable: ForecastVariable; onClose: () => void }) {
-  const data = getRegionData(region);
-  const analogues = getAnalogueData(region);
-  const explanation = getExplanation(region);
+  const data = getRegionData(region, variable);
+  const analogues = getAnalogueData(region, variable);
+  const explanation = getExplanation(region, variable);
+  const unit = getVariableUnit(variable);
 
   return (
     <div className="card p-4 w-80 flex-shrink-0 border-l-2 border-blue-200 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -201,7 +202,7 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Forecast</div>
-          <div className="text-lg font-bold text-slate-900">{data.forecastValue} <span className="text-xs font-normal text-slate-500">mm</span></div>
+          <div className="text-lg font-bold text-slate-900">{data.forecastValue} <span className="text-xs font-normal text-slate-500">{unit}</span></div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Confidence</div>
@@ -209,7 +210,7 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
         </div>
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Mean Error</div>
-          <div className="text-lg font-bold text-slate-900">{data.historicalMeanError} <span className="text-xs font-normal text-slate-500">mm</span></div>
+          <div className="text-lg font-bold text-slate-900">{data.historicalMeanError} <span className="text-xs font-normal text-slate-500">{unit}</span></div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Bust Freq</div>
@@ -251,7 +252,7 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
               <div className="text-slate-500">{a.region} · {a.date}</div>
               <div className="flex justify-between text-slate-500 mt-0.5">
                 <span>Similarity: {a.similarity}%</span>
-                <span>Error: {a.forecastError}mm</span>
+                <span>Error: {a.forecastError}{a.unit || unit}</span>
               </div>
             </div>
           ))}
@@ -266,8 +267,9 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
   );
 }
 
-function HistoricalAnalogues({ region }: { region: string }) {
-  const analogues = getAnalogueData(region);
+function HistoricalAnalogues({ region, variable }: { region: string; variable: ForecastVariable }) {
+  const analogues = getAnalogueData(region, variable);
+  const unit = getVariableUnit(variable);
   return (
     <div className="card p-3">
       <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Clock size={15} /> Historical Analogues</h3>
@@ -276,7 +278,7 @@ function HistoricalAnalogues({ region }: { region: string }) {
           <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-lg p-2 text-xs">
             <div className="flex-1">
               <div className="font-medium text-slate-800">{a.eventType}</div>
-              <div className="text-slate-500">{a.region} · {a.date}</div>
+              <div className="text-slate-500">{a.region} · {a.date} · Error: {a.forecastError}{a.unit || unit}</div>
             </div>
             <div className="text-center flex-shrink-0">
               <div className="font-bold text-slate-800">{a.similarity}%</div>
@@ -292,14 +294,14 @@ function HistoricalAnalogues({ region }: { region: string }) {
   );
 }
 
-function AIExplanation({ region }: { region: string }) {
-  const explanation = getExplanation(region);
+function AIExplanation({ region, variable }: { region: string; variable: ForecastVariable }) {
+  const explanation = getExplanation(region, variable);
   return (
     <div className="card p-3 border-blue-100">
       <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Zap size={15} className="text-blue-500" /> Why is forecast confidence low?</h3>
       <p className="text-xs text-slate-600 leading-relaxed mb-2">{explanation}</p>
       <div className="flex flex-wrap gap-1">
-        {['High historical error', 'Large forecast revision', 'High ensemble spread', 'Strong moisture availability', 'Rapidly evolving weather system'].map((tag) => (
+        {['High historical error', 'Large forecast revision', 'High ensemble spread', 'Strong atmospheric gradient', 'Rapidly evolving weather system'].map((tag) => (
           <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-medium">{tag}</span>
         ))}
       </div>
@@ -364,8 +366,8 @@ export default function App() {
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const { weatherData, loading: weatherLoading, error: weatherError, refetch: refetchWeather, lastFetchTime } = useWeatherData();
 
-  const selectedData = selectedRegion ? getRegionData(selectedRegion) : null;
-  const summary = getSummaryStats();
+  const selectedData = selectedRegion ? getRegionData(selectedRegion, variable) : null;
+  const summary = getSummaryStats(variable);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -437,7 +439,7 @@ export default function App() {
       {/* Main Content */}
       <div className="flex-1 p-4 space-y-3 overflow-auto">
         <SummaryCards day={day} variable={variable} />
-        <ForecastTimeline day={day} setDay={setDay} />
+        <ForecastTimeline day={day} setDay={setDay} variable={variable} />
 
         <div className="flex gap-4" style={{ minHeight: '420px' }}>
           {/* Map */}
@@ -483,8 +485,8 @@ export default function App() {
 
         {/* Bottom Section */}
         <div className="grid grid-cols-3 gap-3">
-          <AIExplanation region={selectedRegion || 'Odisha'} />
-          <HistoricalAnalogues region={selectedRegion || 'Odisha'} />
+          <AIExplanation region={selectedRegion || 'Odisha'} variable={variable} />
+          <HistoricalAnalogues region={selectedRegion || 'Odisha'} variable={variable} />
           <DataSources />
         </div>
         <SystemStatus />
@@ -512,7 +514,7 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-6 gap-2">
               {Array.from(weatherData.entries()).slice(0, 18).map(([region, data]) => {
-                const col = mapColor(mapMode, getConfidence(day, region), getBustProb(day, region));
+                const col = mapColor(mapMode, getConfidence(day, region, variable), getBustProb(day, region, variable));
                 return (
                   <div key={region} className="bg-slate-50 rounded-lg p-2.5 border border-slate-100 hover:border-slate-300 transition-all">
                     <div className="text-[10px] font-semibold text-slate-700 mb-1.5">{region}</div>
@@ -532,7 +534,7 @@ export default function App() {
                     </div>
                     <div className="mt-1.5 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: col }} />
-                      <span className="text-[9px] text-slate-400">{getConfidence(day, region).toUpperCase()}</span>
+                      <span className="text-[9px] text-slate-400">{getConfidence(day, region, variable).toUpperCase()}</span>
                     </div>
                   </div>
                 );
