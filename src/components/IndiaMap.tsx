@@ -15,7 +15,6 @@ function bustColor(prob: number): string {
   return '#ef4444';
 }
 
-// Realistic India shape with proper subcontinent outline
 const INDIA_SHAPE = `
   M 425 155
   C 445 135, 475 118, 505 108
@@ -81,7 +80,6 @@ const INDIA_SHAPE = `
   Z
 `;
 
-// Parse viewBox string to numbers
 function parseVB(vb: string) {
   const p = vb.split(/\s+/).map(Number);
   return { x: p[0], y: p[1], w: p[2], h: p[3] };
@@ -96,7 +94,6 @@ export default function IndiaMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ViewBox for zoom/pan (controls what part of the 900x1000 SVG is visible)
   const [viewBox, setViewBox] = useState('0 0 900 1000');
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -142,7 +139,6 @@ export default function IndiaMap({
     setViewBoxStart(viewBox);
   }, [viewBox]);
 
-  // Drag effect
   useEffect(() => {
     if (!isDragging) return;
     const onMove = (e: MouseEvent) => {
@@ -167,7 +163,6 @@ export default function IndiaMap({
     };
   }, [isDragging, dragStart, viewBoxStart]);
 
-  // Hover handler
   const handleRegionHover = useCallback((name: string | null, e?: React.MouseEvent) => {
     onHoverRegion(name);
     if (name && e && containerRef.current) {
@@ -177,7 +172,6 @@ export default function IndiaMap({
     setTooltipRegion(name);
   }, [onHoverRegion]);
 
-  // Get region info
   const getRegionInfo = (name: string) => {
     const d = STATE_DATA[name];
     if (!d) return null;
@@ -209,7 +203,6 @@ export default function IndiaMap({
         </div>
       </div>
 
-      {/* Zoom Controls */}
       <div className="absolute top-8 right-4 z-10 flex flex-col gap-1">
         <button
           onClick={() => zoomAtCenter(1.3)}
@@ -234,7 +227,6 @@ export default function IndiaMap({
         </button>
       </div>
 
-      {/* Map Container */}
       <div
         ref={containerRef}
         className="relative w-full overflow-hidden rounded-lg"
@@ -275,7 +267,6 @@ export default function IndiaMap({
             </radialGradient>
           </defs>
 
-          {/* India Background Shape */}
           <path
             d={INDIA_SHAPE}
             fill="url(#landGrad)"
@@ -284,14 +275,12 @@ export default function IndiaMap({
             style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.08))' }}
           />
 
-          {/* Subtle inner region glow */}
           <path
             d={INDIA_SHAPE}
             fill="url(#stateGlow)"
             style={{ pointerEvents: 'none' }}
           />
 
-          {/* State Markers */}
           {STATE_POSITIONS.map((s) => {
             const info = getRegionInfo(s.name);
             if (!info) return null;
@@ -309,7 +298,6 @@ export default function IndiaMap({
                 onClick={(e) => { e.stopPropagation(); onSelectRegion(selectedRegion === s.name ? null : s.name); }}
                 style={{ cursor: 'pointer' }}
               >
-                {/* Hover glow */}
                 {isHovered && (
                   <circle cx={s.x} cy={s.y} r={26} fill={col} opacity={0.08} style={{ pointerEvents: 'none' }}>
                     <animate attributeName="r" values="24;30;24" dur="2s" repeatCount="indefinite" />
@@ -317,7 +305,6 @@ export default function IndiaMap({
                   </circle>
                 )}
 
-                {/* Selection ring */}
                 {isSelected && (
                   <>
                     <circle cx={s.x} cy={s.y} r={24} fill={col} opacity={0.1} style={{ pointerEvents: 'none' }} />
@@ -325,7 +312,6 @@ export default function IndiaMap({
                   </>
                 )}
 
-                {/* Main dot */}
                 <circle
                   cx={s.x} cy={s.y} r={r}
                   fill={col}
@@ -336,14 +322,12 @@ export default function IndiaMap({
                   }}
                 />
 
-                {/* Inner highlight */}
                 <circle
                   cx={s.x} cy={s.y} r={r * 0.4}
                   fill="white" opacity={0.4}
                   style={{ pointerEvents: 'none' }}
                 />
 
-                {/* Label */}
                 <text
                   x={s.x} y={s.y + 4}
                   textAnchor="middle" fill="white" fontSize={7} fontWeight="bold"
@@ -353,7 +337,6 @@ export default function IndiaMap({
                   {getLabel(s.name)}
                 </text>
 
-                {/* Region name */}
                 <text
                   x={s.x} y={s.y + r + 12}
                   textAnchor="middle" fill="#475569" fontSize={7} fontWeight="600"
@@ -367,7 +350,6 @@ export default function IndiaMap({
           })}
         </svg>
 
-        {/* Tooltip */}
         {tooltipRegion && (() => {
           const info = getRegionInfo(tooltipRegion);
           if (!info) return null;

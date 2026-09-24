@@ -1,7 +1,5 @@
-// Open-Meteo API — free, no key required, covers India
 const BASE = import.meta.env.VITE_WEATHER_API_URL || 'https://api.open-meteo.com/v1/forecast';
 
-// Approximate lat/lng for each Indian region
 export const REGION_COORDINATES: Record<string, { lat: number; lng: number }> = {
   'Jammu & Kashmir': { lat: 33.8, lng: 74.8 },
   'Himachal Pradesh': { lat: 31.1, lng: 77.2 },
@@ -37,11 +35,11 @@ export interface WeatherData {
   temperature: number;
   maxTemp: number;
   minTemp: number;
-  rainfall: number;       // daily precipitation sum (mm)
-  windSpeed: number;      // max wind speed (km/h)
-  pressure: number;       // mean sea level pressure (hPa)
-  humidity: number;       // relative humidity
-  forecastDays: number;   // number of days forecasted
+  rainfall: number;
+  windSpeed: number;
+  pressure: number;
+  humidity: number;
+  forecastDays: number;
   lastUpdated: string;
 }
 
@@ -50,7 +48,6 @@ export interface WeatherError {
   error: string;
 }
 
-// Fetch real weather data for a single region
 export async function fetchRegionWeather(region: string): Promise<WeatherData | null> {
   const coords = REGION_COORDINATES[region];
   if (!coords) return null;
@@ -103,13 +100,12 @@ export async function fetchRegionWeather(region: string): Promise<WeatherData | 
   }
 }
 
-// Fetch weather data for all regions with concurrency limit
 export async function fetchAllRegionsWeather(
   regions: string[],
   onProgress?: (region: string, data: WeatherData | null) => void
 ): Promise<Map<string, WeatherData>> {
   const results = new Map<string, WeatherData>();
-  const CONCURRENCY = 5; // Open-Meteo allows ~10 req/s
+  const CONCURRENCY = 5;
 
   for (let i = 0; i < regions.length; i += CONCURRENCY) {
     const batch = regions.slice(i, i + CONCURRENCY);

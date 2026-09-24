@@ -20,7 +20,6 @@ export function useWeatherData(region?: string): UseWeatherDataReturn {
   const abortRef = useRef<AbortController | null>(null);
 
   const fetch = useCallback(async (targetRegion?: string) => {
-    // Cancel previous request
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
@@ -31,12 +30,10 @@ export function useWeatherData(region?: string): UseWeatherDataReturn {
       let results: Map<string, WeatherData>;
 
       if (targetRegion) {
-        // Fetch single region
         const data = await fetchRegionWeather(targetRegion);
         results = new Map();
         if (data) results.set(targetRegion, data);
       } else {
-        // Fetch all regions
         const allRegions = Object.keys(REGION_COORDINATES);
         results = await fetchAllRegionsWeather(allRegions);
       }
@@ -60,7 +57,6 @@ export function useWeatherData(region?: string): UseWeatherDataReturn {
   return { weatherData, loading, error, refetch: fetch, lastFetchTime };
 }
 
-// Hook to get real-time weather for a specific region
 export function useRegionWeather(region: string | null): WeatherData | null {
   const [data, setData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
