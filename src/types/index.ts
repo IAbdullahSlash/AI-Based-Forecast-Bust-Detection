@@ -69,3 +69,5 @@ export interface SummaryStats {
   mediumConfidence: number;
   lowConfidence: number;
 }
+
+export type { WeatherData } from '../api/weatherApi';

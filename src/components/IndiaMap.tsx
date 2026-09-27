@@ -1,20 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { MapPin, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
-import {
-  STATE_POSITIONS,
-  getRegionData,
-  getConfidence, getBustProb, getForecastVal,
-} from '../data/mockData';
-import { ForecastVariable, Confidence, getVariableUnit } from '../types';
-
-function confidenceColor(conf: Confidence): string {
-  return conf === 'high' ? '#22c55e' : conf === 'medium' ? '#eab308' : '#ef4444';
-}
-function bustColor(prob: number): string {
-  if (prob < 40) return '#3b82f6';
-  if (prob < 60) return '#eab308';
-  return '#ef4444';
-}
+import { STATE_POSITIONS, getRegionData } from '../data/mockData';
+import { ForecastVariable, ConfidenceByDay, getVariableUnit } from '../types';
+import { confidenceColor, bustColor, getConfidence, getBustProb, getForecastVal } from '../utils/weatherUtils';
 
 const INDIA_SHAPE = `
   M 425 155
@@ -86,13 +74,27 @@ function parseVB(vb: string) {
   return { x: p[0], y: p[1], w: p[2], h: p[3] };
 }
 
+interface IndiaMapProps {
+  day: number;
+  variable: ForecastVariable;
+  mapMode: 'confidence' | 'bust';
+  selectedRegion: string | null;
+  onSelectRegion: (r: string | null) => void;
+  hoveredRegion: string | null;
+  onHoverRegion: (r: string | null) => void;
+  cb?: ConfidenceByDay;
+}
+
 export default function IndiaMap({
-  day, variable, mapMode, selectedRegion, onSelectRegion, hoveredRegion, onHoverRegion,
-}: {
-  day: number; variable: ForecastVariable; mapMode: 'confidence' | 'bust';
-  selectedRegion: string | null; onSelectRegion: (r: string | null) => void;
-  hoveredRegion: string | null; onHoverRegion: (r: string | null) => void;
-}) {
+  day,
+  variable,
+  mapMode,
+  selectedRegion,
+  onSelectRegion,
+  hoveredRegion,
+  onHoverRegion,
+  cb,
+}: IndiaMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [viewBox, setViewBox] = useState('0 0 900 1000');
@@ -102,8 +104,11 @@ export default function IndiaMap({
   const [tooltipRegion, setTooltipRegion] = useState<string | null>(null);
   const [tooltipMouse, setTooltipMouse] = useState({ x: 0, y: 0 });
 
+  // Touch tracking for pinch-zoom and pan
+  const touchStartRef = useRef<{ dist: number; midX: number; midY: number; vb: string } | null>(null);
+
   const zoomAtCenter = useCallback((factor: number) => {
-    setViewBox(prev => {
+    setViewBox((prev) => {
       const { x, y, w, h } = parseVB(prev);
       const newW = w / factor;
       const newH = h / factor;
@@ -123,7 +128,7 @@ export default function IndiaMap({
     const mx = (e.clientX - rect.left) / rect.width;
     const my = (e.clientY - rect.top) / rect.height;
 
-    setViewBox(prev => {
+    setViewBox((prev) => {
       const { x, y, w, h } = parseVB(prev);
       const newW = w / factor;
       const newH = h / factor;
@@ -133,12 +138,15 @@ export default function IndiaMap({
     });
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setViewBoxStart(viewBox);
-  }, [viewBox]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      setViewBoxStart(viewBox);
+    },
+    [viewBox]
+  );
 
   useEffect(() => {
     if (!isDragging) return;
@@ -164,22 +172,73 @@ export default function IndiaMap({
     };
   }, [isDragging, dragStart, viewBoxStart]);
 
-  const handleRegionHover = useCallback((name: string | null, e?: React.MouseEvent) => {
-    onHoverRegion(name);
-    if (name && e && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setTooltipMouse({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  // Touch handlers for mobile pan & pinch-zoom
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setIsDragging(true);
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+      setViewBoxStart(viewBox);
+    } else if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      touchStartRef.current = {
+        dist,
+        midX: (t1.clientX + t2.clientX) / 2,
+        midY: (t1.clientY + t2.clientY) / 2,
+        vb: viewBox,
+      };
     }
-    setTooltipRegion(name);
-  }, [onHoverRegion]);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && isDragging) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragStart.x;
+      const dy = touch.clientY - dragStart.y;
+      const { x, y, w, h } = parseVB(viewBoxStart);
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const scaleX = w / rect.width;
+      const scaleY = h / rect.height;
+      setViewBox(`${x - dx * scaleX} ${y - dy * scaleY} ${w} ${h}`);
+    } else if (e.touches.length === 2 && touchStartRef.current) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const factor = dist / touchStartRef.current.dist;
+      const { x, y, w, h } = parseVB(touchStartRef.current.vb);
+      const newW = w / factor;
+      const newH = h / factor;
+      setViewBox(`${x + (w - newW) / 2} ${y + (h - newH) / 2} ${newW} ${newH}`);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    touchStartRef.current = null;
+  };
+
+  const handleRegionHover = useCallback(
+    (name: string | null, e?: React.MouseEvent) => {
+      onHoverRegion(name);
+      if (name && e && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setTooltipMouse({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      }
+      setTooltipRegion(name);
+    },
+    [onHoverRegion]
+  );
 
   const getRegionInfo = (name: string) => {
     const d = getRegionData(name, variable);
     if (!d) return null;
     return {
-      conf: getConfidence(day, name, variable),
-      bustProb: getBustProb(day, name, variable),
-      forecastVal: getForecastVal(day, name, variable),
+      conf: getConfidence(day, name, cb),
+      bustProb: getBustProb(day, name, cb),
+      forecastVal: getForecastVal(day, name, cb),
       baseData: d,
     };
   };
@@ -196,11 +255,15 @@ export default function IndiaMap({
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <MapPin size={16} /> India Forecast Map
-          <span className="text-[11px] font-normal text-slate-400">({mapMode === 'confidence' ? 'Forecast Confidence' : 'Bust Probability'})</span>
+          <span className="text-[11px] font-normal text-slate-400">
+            ({mapMode === 'confidence' ? 'Forecast Confidence' : 'Bust Probability'})
+          </span>
         </h2>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">Day {day}</span>
-          <span className="text-[9px] text-slate-400">Scroll to zoom · Drag to pan</span>
+          <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">
+            Day {day}
+          </span>
+          <span className="text-[9px] text-slate-400 hidden sm:inline">Scroll/pinch to zoom · Drag to pan</span>
         </div>
       </div>
 
@@ -239,6 +302,9 @@ export default function IndiaMap({
           style={{ touchAction: 'none' }}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           onMouseMove={(e) => {
             if (isDragging) return;
             if (tooltipRegion && containerRef.current) {
@@ -255,16 +321,21 @@ export default function IndiaMap({
           <defs>
             <filter id="glow">
               <feGaussianBlur stdDeviation="2" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
             </filter>
             <filter id="shadow">
               <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="rgba(0,0,0,0.15)" />
             </filter>
             <linearGradient id="landGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#f1f5f9" /><stop offset="100%" stopColor="#e2e8f0" />
+              <stop offset="0%" stopColor="#f1f5f9" />
+              <stop offset="100%" stopColor="#e2e8f0" />
             </linearGradient>
             <radialGradient id="stateGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="rgba(59,130,246,0.15)" /><stop offset="100%" stopColor="rgba(59,130,246,0)" />
+              <stop offset="0%" stopColor="rgba(59,130,246,0.15)" />
+              <stop offset="100%" stopColor="rgba(59,130,246,0)" />
             </radialGradient>
           </defs>
 
@@ -276,11 +347,7 @@ export default function IndiaMap({
             style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.08))' }}
           />
 
-          <path
-            d={INDIA_SHAPE}
-            fill="url(#stateGlow)"
-            style={{ pointerEvents: 'none' }}
-          />
+          <path d={INDIA_SHAPE} fill="url(#stateGlow)" style={{ pointerEvents: 'none' }} />
 
           {STATE_POSITIONS.map((s) => {
             const info = getRegionInfo(s.name);
@@ -288,15 +355,23 @@ export default function IndiaMap({
             const col = mapMode === 'confidence' ? confidenceColor(info.conf) : bustColor(info.bustProb);
             const isSelected = selectedRegion === s.name;
             const isHovered = hoveredRegion === s.name;
-            const isInside = isSelected || isHovered;
             const r = isSelected ? 18 : isHovered ? 15 : 12;
 
             return (
               <g
                 key={s.name}
-                onMouseEnter={(e) => { e.stopPropagation(); handleRegionHover(s.name, e); }}
-                onMouseLeave={(e) => { e.stopPropagation(); handleRegionHover(null, e); }}
-                onClick={(e) => { e.stopPropagation(); onSelectRegion(selectedRegion === s.name ? null : s.name); }}
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  handleRegionHover(s.name, e);
+                }}
+                onMouseLeave={(e) => {
+                  e.stopPropagation();
+                  handleRegionHover(null, e);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectRegion(selectedRegion === s.name ? null : s.name);
+                }}
                 style={{ cursor: 'pointer' }}
               >
                 {isHovered && (
@@ -309,29 +384,42 @@ export default function IndiaMap({
                 {isSelected && (
                   <>
                     <circle cx={s.x} cy={s.y} r={24} fill={col} opacity={0.1} style={{ pointerEvents: 'none' }} />
-                    <circle cx={s.x} cy={s.y} r={24} fill="none" stroke={col} strokeWidth="2" strokeDasharray="3 2" opacity={0.6} style={{ pointerEvents: 'none' }} />
+                    <circle
+                      cx={s.x}
+                      cy={s.y}
+                      r={24}
+                      fill="none"
+                      stroke={col}
+                      strokeWidth="2"
+                      strokeDasharray="3 2"
+                      opacity={0.6}
+                      style={{ pointerEvents: 'none' }}
+                    />
                   </>
                 )}
 
                 <circle
-                  cx={s.x} cy={s.y} r={r}
+                  cx={s.x}
+                  cy={s.y}
+                  r={r}
                   fill={col}
-                  stroke="white" strokeWidth="2"
+                  stroke="white"
+                  strokeWidth="2"
                   style={{
                     filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.25))',
                     transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 />
 
-                <circle
-                  cx={s.x} cy={s.y} r={r * 0.4}
-                  fill="white" opacity={0.4}
-                  style={{ pointerEvents: 'none' }}
-                />
+                <circle cx={s.x} cy={s.y} r={r * 0.4} fill="white" opacity={0.4} style={{ pointerEvents: 'none' }} />
 
                 <text
-                  x={s.x} y={s.y + 4}
-                  textAnchor="middle" fill="white" fontSize={7} fontWeight="bold"
+                  x={s.x}
+                  y={s.y + 4}
+                  textAnchor="middle"
+                  fill="white"
+                  fontSize={7}
+                  fontWeight="bold"
                   pointerEvents="none"
                   style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
                 >
@@ -339,8 +427,12 @@ export default function IndiaMap({
                 </text>
 
                 <text
-                  x={s.x} y={s.y + r + 12}
-                  textAnchor="middle" fill="#475569" fontSize={7} fontWeight="600"
+                  x={s.x}
+                  y={s.y + r + 12}
+                  textAnchor="middle"
+                  fill="#475569"
+                  fontSize={7}
+                  fontWeight="600"
                   pointerEvents="none"
                   style={{ transition: 'all 0.2s ease' }}
                 >
@@ -351,39 +443,56 @@ export default function IndiaMap({
           })}
         </svg>
 
-        {tooltipRegion && (() => {
-          const info = getRegionInfo(tooltipRegion);
-          if (!info) return null;
-          const col = mapMode === 'confidence' ? confidenceColor(info.conf) : bustColor(info.bustProb);
-          const container = containerRef.current;
-          if (!container) return null;
-          const rect = container.getBoundingClientRect();
-          const pctX = (tooltipMouse.x / rect.width) * 100;
-          const pctY = (tooltipMouse.y / rect.height) * 100;
+        {tooltipRegion &&
+          (() => {
+            const info = getRegionInfo(tooltipRegion);
+            if (!info) return null;
+            const col = mapMode === 'confidence' ? confidenceColor(info.conf) : bustColor(info.bustProb);
+            const container = containerRef.current;
+            if (!container) return null;
+            const rect = container.getBoundingClientRect();
+            const pctX = (tooltipMouse.x / rect.width) * 100;
+            const pctY = (tooltipMouse.y / rect.height) * 100;
 
-          return (
-            <div
-              className="absolute z-20 pointer-events-none"
-              style={{
-                left: `${pctX}%`,
-                top: `${pctY}%`,
-                transform: 'translate(-50%, -120%)',
-              }}
-            >
-              <div className="bg-slate-900 text-white text-xs rounded-xl px-4 py-3 shadow-2xl whitespace-nowrap border border-slate-700/50" style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}>
-                <div className="font-bold text-sm flex items-center gap-2 mb-1.5">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: col }} />
-                  {tooltipRegion}
-                </div>
-                <div className="text-slate-300 text-[11px] space-y-0.5">
-                  <div className="flex justify-between gap-6"><span>Forecast</span><span className="font-medium">{info.forecastVal} {getVariableUnit(variable)}</span></div>
-                  <div className="flex justify-between gap-6"><span>Bust Prob</span><span className="font-medium">{info.bustProb}%</span></div>
-                  <div className="flex justify-between gap-6"><span>Confidence</span><span className="font-medium" style={{ color: confidenceColor(info.conf) }}>{info.conf.toUpperCase()}</span></div>
+            return (
+              <div
+                className="absolute z-20 pointer-events-none"
+                style={{
+                  left: `${pctX}%`,
+                  top: `${pctY}%`,
+                  transform: 'translate(-50%, -120%)',
+                }}
+              >
+                <div
+                  className="bg-slate-900 text-white text-xs rounded-xl px-4 py-3 shadow-2xl whitespace-nowrap border border-slate-700/50"
+                  style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}
+                >
+                  <div className="font-bold text-sm flex items-center gap-2 mb-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: col }} />
+                    {tooltipRegion}
+                  </div>
+                  <div className="text-slate-300 text-[11px] space-y-0.5">
+                    <div className="flex justify-between gap-6">
+                      <span>Forecast</span>
+                      <span className="font-medium">
+                        {info.forecastVal} {getVariableUnit(variable)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span>Bust Prob</span>
+                      <span className="font-medium">{info.bustProb}%</span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span>Confidence</span>
+                      <span className="font-medium" style={{ color: confidenceColor(info.conf) }}>
+                        {info.conf.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
       </div>
     </div>
   );

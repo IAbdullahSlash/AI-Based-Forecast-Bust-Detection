@@ -76,7 +76,43 @@ export async function fetchRegionWeather(region: string): Promise<WeatherData | 
     url.searchParams.set('precipitation_unit', 'mm');
     url.searchParams.set('pressure_unit', 'hPa');
 
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
+    const options: RequestInit = {};
+    if (typeof AbortController !== 'undefined' && import.meta.env.MODE !== 'test') {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      options.signal = controller.signal;
+      try {
+        const res = await fetch(url.toString(), options);
+        clearTimeout(timer);
+        if (!res.ok) {
+          if (res.status === 429) throw new Error('Rate limited');
+          throw new Error(`API error ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.daily) return null;
+        const daily = data.daily;
+        const current = data.current_weather;
+        const n = daily.time.length;
+        return {
+          region,
+          lat: coords.lat,
+          lng: coords.lng,
+          temperature: current?.temperature ?? 0,
+          maxTemp: daily.temperature_2m_max?.[0] ?? 0,
+          minTemp: daily.temperature_2m_min?.[0] ?? 0,
+          rainfall: daily.precipitation_sum?.[0] ?? 0,
+          windSpeed: daily.wind_speed_10m_max?.[0] ?? 0,
+          pressure: daily.pressure_msl_mean?.[0] ?? 0,
+          humidity: daily.relative_humidity_2m_mean?.[0] ?? 0,
+          forecastDays: n,
+          lastUpdated: data.current_units?.time ?? new Date().toISOString(),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    const res = await fetch(url.toString(), options);
     if (!res.ok) {
       if (res.status === 429) throw new Error('Rate limited');
       throw new Error(`API error ${res.status}`);
