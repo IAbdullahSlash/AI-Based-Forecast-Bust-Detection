@@ -2,9 +2,11 @@ const BASE = import.meta.env.VITE_WEATHER_API_URL || 'https://api.open-meteo.com
 
 export const REGION_COORDINATES: Record<string, { lat: number; lng: number }> = {
   'Jammu & Kashmir': { lat: 33.8, lng: 74.8 },
+  'Ladakh': { lat: 34.2, lng: 77.6 },
   'Himachal Pradesh': { lat: 31.1, lng: 77.2 },
   'Punjab': { lat: 30.7, lng: 75.8 },
   'Haryana': { lat: 29.4, lng: 76.5 },
+  'Delhi': { lat: 28.7, lng: 77.1 },
   'Uttarakhand': { lat: 30.3, lng: 78.0 },
   'Uttar Pradesh': { lat: 26.8, lng: 80.9 },
   'Bihar': { lat: 25.1, lng: 85.3 },
@@ -14,6 +16,10 @@ export const REGION_COORDINATES: Record<string, { lat: number; lng: number }> = 
   'Arunachal Pradesh': { lat: 27.1, lng: 93.6 },
   'Assam': { lat: 26.1, lng: 92.9 },
   'Meghalaya': { lat: 25.5, lng: 91.9 },
+  'Manipur': { lat: 24.8, lng: 93.9 },
+  'Mizoram': { lat: 23.2, lng: 92.9 },
+  'Tripura': { lat: 23.9, lng: 91.5 },
+  'Nagaland': { lat: 26.2, lng: 94.6 },
   'Odisha': { lat: 20.5, lng: 85.8 },
   'Chhattisgarh': { lat: 21.3, lng: 81.8 },
   'Madhya Pradesh': { lat: 22.7, lng: 78.8 },
@@ -24,6 +30,7 @@ export const REGION_COORDINATES: Record<string, { lat: number; lng: number }> = 
   'Karnataka': { lat: 15.3, lng: 75.7 },
   'Kerala': { lat: 10.0, lng: 76.3 },
   'Tamil Nadu': { lat: 11.1, lng: 78.2 },
+  'Puducherry': { lat: 11.9, lng: 79.8 },
   'Andhra Pradesh': { lat: 15.9, lng: 79.8 },
   'Telangana': { lat: 17.4, lng: 78.5 },
 };

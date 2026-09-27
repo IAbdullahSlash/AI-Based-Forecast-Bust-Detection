@@ -15,7 +15,9 @@ import {
   getConfidenceByDay,
 } from './data/mockData';
 import IndiaMap from './components/IndiaMap';
+import TrendChart from './components/TrendChart';
 import { useWeatherData } from './hooks/useWeatherData';
+import { useConfidenceData } from './hooks/useConfidenceData';
 
 const VARIABLES: { key: ForecastVariable; label: string; icon: React.ReactNode }[] = [
   { key: 'rainfall', label: 'Rainfall', icon: <CloudRain size={15} /> },
@@ -51,31 +53,28 @@ function mapColor(mode: string, conf: Confidence, prob: number): string {
   return bustColor(prob);
 }
 
-function getConfidence(day: number, region: string, variable: ForecastVariable = 'rainfall'): Confidence {
-  const cb = getConfidenceByDay(variable);
+function getConfidence(day: number, region: string, cb: ReturnType<typeof getConfidenceByDay>): Confidence {
   return cb[day]?.[region]?.confidence || 'medium';
 }
 
-function getBustProb(day: number, region: string, variable: ForecastVariable = 'rainfall'): number {
-  const cb = getConfidenceByDay(variable);
+function getBustProb(day: number, region: string, cb: ReturnType<typeof getConfidenceByDay>): number {
   return cb[day]?.[region]?.bustProbability || 50;
 }
 
-function getForecastVal(day: number, region: string, variable: ForecastVariable = 'rainfall'): number {
-  const cb = getConfidenceByDay(variable);
+function getForecastVal(day: number, region: string, cb: ReturnType<typeof getConfidenceByDay>): number {
   return cb[day]?.[region]?.forecastValue || 100;
 }
 
-function SummaryCards({ day, variable }: { day: number; variable: ForecastVariable }) {
+function SummaryCards({ day, variable, cb }: { day: number; variable: ForecastVariable; cb: ReturnType<typeof getConfidenceByDay> }) {
   const stats = useMemo(() => getSummaryStats(variable), [variable]);
   const summary = useMemo(() => {
     let h = 0, m = 0, l = 0;
     STATE_POSITIONS.forEach((s) => {
-      const c = getConfidence(day, s.name, variable);
+      const c = getConfidence(day, s.name, cb);
       if (c === 'high') h++; else if (c === 'medium') m++; else l++;
     });
     return { total: STATE_POSITIONS.length, high: h, med: m, low: l };
-  }, [day, variable]);
+  }, [day, cb]);
 
   return (
     <div className="grid grid-cols-4 gap-3">
@@ -98,7 +97,7 @@ function SummaryCards({ day, variable }: { day: number; variable: ForecastVariab
   );
 }
 
-function ForecastTimeline({ day, setDay, variable }: { day: number; setDay: (d: number) => void; variable: ForecastVariable }) {
+function ForecastTimeline({ day, setDay, variable, cb }: { day: number; setDay: (d: number) => void; variable: ForecastVariable; cb: ReturnType<typeof getConfidenceByDay> }) {
   return (
     <div className="card p-3">
       <div className="flex items-center gap-2 mb-2">
@@ -109,7 +108,7 @@ function ForecastTimeline({ day, setDay, variable }: { day: number; setDay: (d: 
         {DAYS.map((d) => {
           let h = 0, m = 0, l = 0;
           STATE_POSITIONS.forEach((s) => {
-            const c = getConfidence(d, s.name, variable);
+            const c = getConfidence(d, s.name, cb);
             if (c === 'high') h++; else if (c === 'medium') m++; else l++;
           });
           const conf = l > m && l > h ? 'low' : h > m ? 'high' : 'medium';
@@ -199,7 +198,10 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      {/* 10-day trend sparkline */}
+      <TrendChart region={region} variable={variable} currentDay={day} />
+
+      <div className="grid grid-cols-2 gap-2 mb-4 mt-4">
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Forecast</div>
           <div className="text-lg font-bold text-slate-900">{data.forecastValue} <span className="text-xs font-normal text-slate-500">{unit}</span></div>
@@ -366,9 +368,16 @@ export default function App() {
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const { weatherData, loading: weatherLoading, error: weatherError, refetch: refetchWeather, lastFetchTime } = useWeatherData();
 
+  // Single memoized confidence dataset — avoids re-computing on every render
+  const cb = useConfidenceData(variable);
+
   const selectedData = selectedRegion ? getRegionData(selectedRegion, variable) : null;
   const summary = getSummaryStats(variable);
 
+  // Live date — updates on mount only
+  const liveDate = useMemo(() => new Date().toLocaleDateString('en-IN', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  }), []);
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Header */}
@@ -383,7 +392,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <span className="text-[10px] px-2 py-0.5 bg-blue-600/30 text-blue-300 rounded-full border border-blue-500/30 flex items-center gap-1"><Radio size={8} /> Demo Mode</span>
             <Clock size={14} className="text-slate-400" />
-            <span className="text-xs text-slate-400">2024-07-15</span>
+            <span className="text-xs text-slate-400">{liveDate}</span>
           </div>
         </div>
       </header>
@@ -430,16 +439,20 @@ export default function App() {
             </div>
           </div>
           <div className="w-px h-6 bg-slate-200" />
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-all">
-            <RefreshCw size={13} /> Refresh
+          <button
+            onClick={() => refetchWeather()}
+            disabled={weatherLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={weatherLoading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 p-4 space-y-3 overflow-auto">
-        <SummaryCards day={day} variable={variable} />
-        <ForecastTimeline day={day} setDay={setDay} variable={variable} />
+        <SummaryCards day={day} variable={variable} cb={cb} />
+        <ForecastTimeline day={day} setDay={setDay} variable={variable} cb={cb} />
 
         <div className="flex gap-4" style={{ minHeight: '420px' }}>
           {/* Map */}
@@ -514,7 +527,7 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-6 gap-2">
               {Array.from(weatherData.entries()).slice(0, 18).map(([region, data]) => {
-                const col = mapColor(mapMode, getConfidence(day, region, variable), getBustProb(day, region, variable));
+                const col = mapColor(mapMode, getConfidence(day, region, cb), getBustProb(day, region, cb));
                 return (
                   <div key={region} className="bg-slate-50 rounded-lg p-2.5 border border-slate-100 hover:border-slate-300 transition-all">
                     <div className="text-[10px] font-semibold text-slate-700 mb-1.5">{region}</div>
@@ -534,7 +547,7 @@ export default function App() {
                     </div>
                     <div className="mt-1.5 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: col }} />
-                      <span className="text-[9px] text-slate-400">{getConfidence(day, region, variable).toUpperCase()}</span>
+                      <span className="text-[9px] text-slate-400">{getConfidence(day, region, cb).toUpperCase()}</span>
                     </div>
                   </div>
                 );
