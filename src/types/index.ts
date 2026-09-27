@@ -70,4 +70,52 @@ export interface SummaryStats {
   lowConfidence: number;
 }
 
+export interface CaseStudyStep {
+  stepIndex: number;
+  title: string;
+  timestamp: string;
+  description: string;
+  data: Record<string, any>;
+}
+
+export interface CaseStudy {
+  id: string;
+  title: string;
+  subtitle: string;
+  date: string;
+  targetRegion: string;
+  variable: ForecastVariable;
+  leadTimeDays: number;
+  nwpForecastValue: number;
+  observedValue: number;
+  actualError: number;
+  p90Threshold: number;
+  bustProbability: number;
+  confidence: Confidence;
+  wasBust: boolean;
+  topAnalogues: HistoricalAnalogue[];
+  geminiMeteorologicalContext: string;
+  verificationSummary: Record<string, any>;
+  timelineSteps: CaseStudyStep[];
+}
+
+export interface EvaluationMetrics {
+  precision: number;
+  recall: number;
+  f1Score: number;
+  brierScore: number;
+  detectionLeadTimeDays: number;
+  sampleEventsCount: number;
+  p90ThresholdSummary: Record<string, number>;
+}
+
+export interface BackendHealth {
+  status: string;
+  service: string;
+  version: string;
+  dataset: string;
+  p90_bust_definition: string;
+  analogues_count: number;
+}
+
 export type { WeatherData } from '../api/weatherApi';

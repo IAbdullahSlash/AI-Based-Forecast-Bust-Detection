@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MapPin } from 'lucide-react';
-import { ForecastVariable } from './types';
+import { ForecastVariable, RegionalData, CaseStudy, EvaluationMetrics } from './types';
 import { STATE_POSITIONS } from './data/mockData';
+import { FALLBACK_CASE_STUDIES, FALLBACK_EVALUATION } from './data/caseStudyFallback';
+import { checkBackendHealth, fetchCaseStudies, fetchEvaluationMetrics } from './api/backendApi';
 import { useWeatherData } from './hooks/useWeatherData';
 import { useConfidenceData } from './hooks/useConfidenceData';
 import Header from './components/Header';
@@ -16,6 +18,8 @@ import HistoricalAnalogues from './components/HistoricalAnalogues';
 import DataSources from './components/DataSources';
 import SystemStatus from './components/SystemStatus';
 import LiveWeatherPanel from './components/LiveWeatherPanel';
+import { AlertBanner } from './components/AlertBanner';
+import { CaseStudyModal } from './components/CaseStudyModal';
 
 export default function App() {
   const [day, setDay] = useState(5);
@@ -23,6 +27,17 @@ export default function App() {
   const [mapMode, setMapMode] = useState<'confidence' | 'bust'>('confidence');
   const [selectedRegion, setSelectedRegion] = useState<string | null>('Odisha');
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
+
+  // Operational Alert Threshold state (defaults to 65%)
+  const [alertThreshold, setAlertThreshold] = useState<number>(65);
+
+  // SIH Case Studies Modal state
+  const [isCaseStudiesOpen, setIsCaseStudiesOpen] = useState<boolean>(false);
+  const [caseStudies, setCaseStudies] = useState<CaseStudy[]>(FALLBACK_CASE_STUDIES);
+  const [evaluationMetrics, setEvaluationMetrics] = useState<EvaluationMetrics | null>(FALLBACK_EVALUATION);
+
+  // Backend connection status
+  const [isBackendLive, setIsBackendLive] = useState<boolean>(false);
 
   const {
     weatherData,
@@ -35,10 +50,61 @@ export default function App() {
   // Single memoized confidence dataset — avoids re-computing on every render
   const cb = useConfidenceData(variable);
 
+  // Check FastAPI backend connection on mount & poll every 10s
+  useEffect(() => {
+    let isMounted = true;
+
+    async function probeBackend() {
+      const { isLive } = await checkBackendHealth();
+      if (!isMounted) return;
+      setIsBackendLive(isLive);
+
+      if (isLive) {
+        const [fetchedCases, fetchedMetrics] = await Promise.all([
+          fetchCaseStudies(),
+          fetchEvaluationMetrics()
+        ]);
+        if (!isMounted) return;
+        if (fetchedCases && fetchedCases.length > 0) {
+          setCaseStudies(fetchedCases);
+        }
+        if (fetchedMetrics) {
+          setEvaluationMetrics(fetchedMetrics);
+        }
+      }
+    }
+
+    probeBackend();
+    const interval = setInterval(probeBackend, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Compute active day's regional data map for the Alert Banner
+  const currentDayRegions = useMemo(() => {
+    const dayMap = cb[day] || {};
+    const result: Record<string, RegionalData> = {};
+    Object.entries(dayMap).forEach(([region, data]) => {
+      result[region] = {
+        region,
+        forecastValue: data.forecastValue,
+        bustProbability: data.bustProbability,
+        confidence: data.confidence,
+        historicalMeanError: 0,
+        similarCases: 0,
+        casesWithLargeError: 0,
+        historicalBustFrequency: 0,
+        keyReasons: [],
+      };
+    });
+    return result;
+  }, [cb, day]);
+
   // Global Keyboard shortcuts: Arrow keys for days & cycling regions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
@@ -67,8 +133,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Header */}
-      <Header />
+      {/* Header with backend live badge & case studies trigger */}
+      <Header
+        isBackendLive={isBackendLive}
+        onOpenCaseStudies={() => setIsCaseStudiesOpen(true)}
+      />
 
       {/* Control Bar */}
       <ControlBar
@@ -83,6 +152,16 @@ export default function App() {
 
       {/* Main Dashboard Body */}
       <main className="flex-1 p-4 space-y-3 overflow-auto">
+        {/* Operational In-App Alert Banner */}
+        <AlertBanner
+          day={day}
+          variable={variable}
+          regionsData={currentDayRegions}
+          threshold={alertThreshold}
+          onThresholdChange={setAlertThreshold}
+          onSelectRegion={(reg) => setSelectedRegion(reg)}
+        />
+
         {/* Nationwide Summary Metrics */}
         <SummaryCards day={day} variable={variable} cb={cb} />
 
@@ -156,7 +235,7 @@ export default function App() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <AIExplanation region={selectedRegion || 'Odisha'} variable={variable} day={day} />
           <HistoricalAnalogues region={selectedRegion || 'Odisha'} variable={variable} />
-          <DataSources />
+          <DataSources isBackendLive={isBackendLive} />
         </div>
 
         {/* System & Model Health */}
@@ -174,6 +253,14 @@ export default function App() {
           onRefreshWeather={() => refetchWeather()}
         />
       </main>
+
+      {/* SIH Case Study Walkthrough Modal */}
+      <CaseStudyModal
+        isOpen={isCaseStudiesOpen}
+        onClose={() => setIsCaseStudiesOpen(false)}
+        caseStudies={caseStudies}
+        evaluationMetrics={evaluationMetrics}
+      />
     </div>
   );
 }
