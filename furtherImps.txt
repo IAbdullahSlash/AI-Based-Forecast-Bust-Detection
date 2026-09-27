@@ -1,0 +1,48 @@
+The current 'AI explanation' is template-based text. What's your priority for upgrading it to real AI?
+
+ Integrate a real LLM API (e.g. Google Gemini, OpenAI GPT-4) to generate dynamic, context-aware explanations per region
+
+
+Which LLM provider do you want to integrate for the dynamic AI explanations?
+
+ Google Gemini API (free tier available, fast, integrates easily)
+
+
+Right now all historical analogues and bust probabilities are hardcoded mock data. What's your plan for real historical data?
+
+ Replace mock historical data with real IMD (India Meteorological Department) or ERA5 reanalysis data via API
+
+
+Currently this is a pure frontend SPA. As you add LLM + real data APIs, how do you want to handle the backend?
+
+ Add a backend (Node.js/Express or Python/FastAPI) to serve real data, handle LLM calls server-side, and cache results
+
+
+Since you mentioned ERA5 reanalysis data (which is Python-heavy), which backend language/framework do you prefer?
+
+ Python FastAPI — ideal for ML/data science pipelines, easy integration with ERA5/Pandas
+
+
+Which additional features do you want to prioritize next? (You can select multiple)
+
+ Alert system — notify users when bust probability crosses a threshold for a region
+
+
+For the alert system, what delivery mechanism do you want?
+
+ In-app toast/banner notifications with configurable thresholds per region
+
+
+Where do you plan to deploy this application?
+
+ Vercel (zero-config, GitHub CI/CD, free tier for frontend + serverless)
+
+
+
+Shared Development Roadmap
+
+1   AI Integration:	Google Gemini API → dynamic, context-aware bust explanations
+2	Backend:	Python FastAPI → server-side LLM calls, data caching
+3	Real Data:	ERA5 reanalysis + IMD data → replace all mock historical data
+4	Alerts:	In-app toast/banner with configurable threshold per region
+5	Deployment:	Vercel (frontend) + Google Cloud Run (FastAPI backend)

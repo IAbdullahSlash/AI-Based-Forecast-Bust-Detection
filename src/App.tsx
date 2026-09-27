@@ -154,7 +154,7 @@ export default function App() {
 
         {/* Synoptic Intelligence & Verification Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <AIExplanation region={selectedRegion || 'Odisha'} variable={variable} />
+          <AIExplanation region={selectedRegion || 'Odisha'} variable={variable} day={day} />
           <HistoricalAnalogues region={selectedRegion || 'Odisha'} variable={variable} />
           <DataSources />
         </div>
