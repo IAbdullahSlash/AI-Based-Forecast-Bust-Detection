@@ -133,11 +133,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Header with backend live badge & case studies trigger */}
-      <Header
-        isBackendLive={isBackendLive}
-        onOpenCaseStudies={() => setIsCaseStudiesOpen(true)}
-      />
+      {/* Header with backend live badge */}
+      <Header isBackendLive={isBackendLive} />
 
       {/* Control Bar */}
       <ControlBar

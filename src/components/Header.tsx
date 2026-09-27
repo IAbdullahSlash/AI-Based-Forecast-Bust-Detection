@@ -1,12 +1,11 @@
 import React, { useMemo } from 'react';
-import { CloudRain, Radio, Clock, Award, Server } from 'lucide-react';
+import { CloudRain, Radio, Clock, Server } from 'lucide-react';
 
 interface HeaderProps {
   isBackendLive?: boolean;
-  onOpenCaseStudies?: () => void;
 }
 
-export default function Header({ isBackendLive = false, onOpenCaseStudies }: HeaderProps) {
+export default function Header({ isBackendLive = false }: HeaderProps) {
   const liveDate = useMemo(
     () =>
       new Date().toLocaleDateString('en-IN', {
@@ -35,16 +34,6 @@ export default function Header({ isBackendLive = false, onOpenCaseStudies }: Hea
           <span className="text-[10px] px-2 py-0.5 bg-blue-600/30 text-blue-300 rounded-full border border-blue-500/30 flex items-center gap-1">
             <Radio size={8} /> Demo Mode
           </span>
-          {/* SIH Case Studies Button */}
-          {onOpenCaseStudies && (
-            <button
-              onClick={onOpenCaseStudies}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm shadow-blue-500/20 border border-blue-400/30 transition transform hover:-translate-y-0.5"
-            >
-              <Award className="w-3.5 h-3.5" />
-              <span>SIH Case Studies</span>
-            </button>
-          )}
 
           {/* Backend Status Badge */}
           <div

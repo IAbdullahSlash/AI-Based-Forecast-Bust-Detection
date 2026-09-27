@@ -31,43 +31,53 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
   return (
     <div className="mb-4">
       <div
-        className={`rounded-xl border transition-all duration-300 shadow-sm overflow-hidden ${
+        className={`rounded-xl border shadow-sm transition-all duration-300 overflow-hidden bg-white ${
           hasAlerts
-            ? 'bg-gradient-to-r from-red-950/40 via-red-900/20 to-slate-900 border-red-500/40'
-            : 'bg-gradient-to-r from-emerald-950/30 via-slate-900 to-slate-900 border-emerald-500/30'
+            ? 'border-l-4 border-l-rose-500 border-y-rose-200 border-r-rose-200 bg-gradient-to-r from-rose-50/70 via-white to-white'
+            : 'border-l-4 border-l-emerald-500 border-y-slate-200 border-r-slate-200 bg-gradient-to-r from-emerald-50/60 via-white to-white'
         }`}
       >
         <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          {/* Left: Alert Status */}
+          {/* Left: Alert Status & Headline */}
           <div className="flex items-center gap-3">
             <div
-              className={`p-2 rounded-lg flex items-center justify-center ${
-                hasAlerts ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-emerald-500/20 text-emerald-400'
+              className={`p-2 rounded-xl flex items-center justify-center border shadow-xs ${
+                hasAlerts
+                  ? 'bg-rose-100 border-rose-300 text-rose-600 animate-pulse'
+                  : 'bg-emerald-100 border-emerald-300 text-emerald-700'
               }`}
             >
               {hasAlerts ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    hasAlerts ? 'text-rose-700' : 'text-emerald-700'
+                  }`}
+                >
                   Operational Early Warning
                 </span>
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                     hasAlerts
-                      ? 'bg-red-500/30 text-red-300 border border-red-500/40'
-                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                      : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                   }`}
                 >
                   Day {day} Horizon
                 </span>
               </div>
-              <p className="text-sm font-medium text-slate-100">
+              <p className="text-sm font-medium text-slate-800">
                 {hasAlerts ? (
                   <>
-                    <span className="font-bold text-red-400">{highRiskRegions.length} Regions</span> breach{' '}
-                    <span className="font-mono text-amber-300">{threshold}%</span> forecast bust threshold
+                    <span className="font-extrabold text-rose-600">{highRiskRegions.length} Regions</span>{' '}
+                    breach{' '}
+                    <span className="font-mono font-bold text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-300 text-xs">
+                      {threshold}%
+                    </span>{' '}
+                    forecast bust threshold
                   </>
                 ) : (
                   <>All regions within acceptable NWP stability limits (below {threshold}% bust risk)</>
@@ -80,17 +90,17 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowConfig(!showConfig)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 rounded-lg border border-slate-300 shadow-xs transition"
               title="Configure Alert Threshold"
             >
-              <Settings2 className="w-3.5 h-3.5" />
+              <Settings2 className="w-3.5 h-3.5 text-slate-500" />
               <span>Threshold: {threshold}%</span>
             </button>
 
             {hasAlerts && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-red-950/60 hover:bg-red-900/60 text-red-300 rounded-lg border border-red-800/40 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-xs transition"
               >
                 <span>{isExpanded ? 'Hide' : 'Inspect'} ({highRiskRegions.length})</span>
                 {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -101,10 +111,10 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
 
         {/* Threshold Slider Dropdown */}
         {showConfig && (
-          <div className="px-4 py-3 bg-slate-900/90 border-t border-slate-800/80 flex flex-wrap items-center gap-4 text-xs text-slate-300">
+          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center gap-4 text-xs text-slate-700">
             <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-amber-400" />
-              <span className="font-semibold text-slate-200">Bust Probability Alert Trigger:</span>
+              <Bell className="w-4 h-4 text-amber-600" />
+              <span className="font-bold text-slate-800">Bust Probability Alert Trigger:</span>
             </div>
             <div className="flex items-center gap-3 flex-1 max-w-xs">
               <input
@@ -114,11 +124,13 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
                 step="5"
                 value={threshold}
                 onChange={(e) => onThresholdChange(Number(e.target.value))}
-                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500"
+                className="w-full h-2 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-rose-600"
               />
-              <span className="font-mono font-bold text-amber-400 min-w-[3rem]">{threshold}%</span>
+              <span className="font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 min-w-[3rem] text-center">
+                {threshold}%
+              </span>
             </div>
-            <span className="text-slate-400 text-[11px]">
+            <span className="text-slate-500 text-[11px]">
               Regions with bust probability &ge; {threshold}% will trigger warnings and operational map highlights.
             </span>
           </div>
@@ -126,21 +138,21 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
 
         {/* Expandable High Risk Regions List */}
         {isExpanded && hasAlerts && (
-          <div className="px-4 py-3 bg-red-950/30 border-t border-red-900/40">
-            <div className="text-xs font-semibold text-red-300 mb-2 uppercase tracking-wide">
-              Critical Warning States (Click to Inspect):
+          <div className="px-4 py-3 bg-rose-50/70 border-t border-rose-200">
+            <div className="text-[11px] font-bold text-rose-800 mb-2 uppercase tracking-wide">
+              Critical Warning States (Click to Inspect on Map):
             </div>
             <div className="flex flex-wrap gap-2">
               {highRiskRegions.map((r) => (
                 <button
                   key={r.region}
                   onClick={() => onSelectRegion(r.region)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 border border-red-500/40 hover:border-red-400 rounded-lg transition text-left group"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-rose-100/60 border border-rose-300 hover:border-rose-400 rounded-lg shadow-2xs transition text-left group"
                 >
-                  <span className="text-xs font-medium text-slate-200 group-hover:text-white">
+                  <span className="text-xs font-semibold text-slate-800 group-hover:text-slate-950">
                     {r.region}
                   </span>
-                  <span className="text-[11px] font-mono font-bold text-red-400 bg-red-950/60 px-1.5 py-0.5 rounded border border-red-800/50">
+                  <span className="text-[11px] font-mono font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded border border-rose-300">
                     {r.bustProbability}%
                   </span>
                 </button>
