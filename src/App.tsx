@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Clock, CloudRain, Wind, Thermometer, Gauge, MapPin,
   RefreshCw, Zap, AlertTriangle, ChevronDown, Sun, Cloud, Layers, Radio, Activity, CheckCircle2,
@@ -12,6 +12,7 @@ import {
 import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
+import { DatasetStatus, fetchDatasetStatus } from './api/datasetApi';
 
 const VARIABLES: { key: ForecastVariable; label: string; icon: React.ReactNode }[] = [
   { key: 'rainfall', label: 'Rainfall', icon: <CloudRain size={15} /> },
@@ -336,6 +337,18 @@ function AIExplanation({ region, day }: { region: string; day: number }) {
 
 function DataSources() {
   const [open, setOpen] = useState(false);
+  const [dataset, setDataset] = useState<DatasetStatus | null>(null);
+
+  useEffect(() => {
+    fetchDatasetStatus().then(setDataset).catch(() => setDataset(null));
+  }, []);
+
+  const forecastStatus = dataset?.available
+    ? `${dataset.fileCount} NetCDF files`
+    : 'No local files found';
+  const coverageStatus = dataset?.available
+    ? `${dataset.initializations.length} initializations, Day ${dataset.forecastDays[0]}–${dataset.forecastDays[dataset.forecastDays.length - 1]}`
+    : 'Pending';
   return (
     <div className="card overflow-hidden">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
@@ -345,10 +358,11 @@ function DataSources() {
       {open && (
         <div className="px-3 pb-3 space-y-1.5">
           {[
-            { name: 'Forecast / observation pairs', status: 'Local demo data', icon: <CloudRain size={12} /> },
+            { name: 'NWP rainfall forecast files', status: forecastStatus, icon: <CloudRain size={12} /> },
+            { name: 'Forecast coverage', status: coverageStatus, icon: <Clock size={12} /> },
             { name: 'Historical error engine', status: 'Deterministic', icon: <Clock size={12} /> },
-            { name: 'Live weather', status: 'Optional Open-Meteo', icon: <Activity size={12} /> },
-            { name: 'Archived NWP + IMD observations', status: 'Pending data access', icon: <MapPin size={12} /> },
+            { name: 'Observed rainfall archive', status: dataset?.observationDataAvailable ? 'Available' : 'Required for evaluation', icon: <Activity size={12} /> },
+            { name: 'State/grid aggregation', status: 'Next ingestion step', icon: <MapPin size={12} /> },
           ].map((s) => (
             <div key={s.name} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs">
               <span className="font-medium text-slate-700 flex items-center gap-2">{s.icon} {s.name}</span>

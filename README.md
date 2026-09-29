@@ -6,6 +6,10 @@
 
 The Gemini key is read only by `server.mjs`; never rename it to a `VITE_` variable. Run the API/server with `npm run server`, then use the **Generate** button in the dashboard. For local development, also run `npm run dev` in a second terminal; Vite proxies `/api` to the server. The default model is `gemini-3.5-flash`; override it with `GEMINI_MODEL` in `.env` only if your Gemini account requires another available model.
 
+## NetCDF forecast ingestion foundation
+
+Place forecast NetCDF files in `dataset/` using the naming pattern `<variable>_ICYYYYMMDD_dayNN.nc`, such as `APCP-sfc_IC20150601_day05.nc`. The server now exposes a local catalogue at `/api/dataset/status`; the dashboard shows its file count, initialization dates, and lead-day coverage. This validates and inventories forecast inputs without treating them as observations. A later observation archive must provide matching valid time, location/grid, and rainfall values before bust metrics can be calculated from these files.
+
 A real-time dashboard for monitoring **forecast confidence** and **bust probability** across Indian states — built with React, TypeScript, Tailwind CSS, and Vite.
 
 ---

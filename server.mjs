@@ -1,10 +1,11 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const distDirectory = resolve(root, 'dist');
+const datasetDirectory = resolve(root, 'dataset');
 const port = Number(process.env.PORT || 8787);
 // Use a stable, low-latency text model for dashboard briefings. Override via
 // GEMINI_MODEL if the deployment has a different approved model.
@@ -130,6 +131,39 @@ function serveStatic(requestPath, response) {
   createReadStream(target).pipe(response);
 }
 
+function getDatasetStatus() {
+  if (!existsSync(datasetDirectory)) {
+    return {
+      available: false,
+      fileCount: 0,
+      initializations: [],
+      forecastDays: [],
+      variables: [],
+      observationDataAvailable: false,
+      readyForBustEvaluation: false,
+    };
+  }
+
+  const matches = readdirSync(datasetDirectory)
+    .map((file) => file.match(/^([A-Za-z0-9-]+)_IC(\d{8})_day(\d{2})\.nc$/))
+    .filter(Boolean);
+  const initializations = [...new Set(matches.map((match) => match[2]))]
+    .sort()
+    .map((date) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`);
+  const forecastDays = [...new Set(matches.map((match) => Number(match[3])))].sort((a, b) => a - b);
+  const variables = [...new Set(matches.map((match) => match[1]))];
+
+  return {
+    available: matches.length > 0,
+    fileCount: matches.length,
+    initializations,
+    forecastDays,
+    variables,
+    observationDataAvailable: false,
+    readyForBustEvaluation: false,
+  };
+}
+
 createServer(async (request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   if (request.method === 'POST' && url.pathname === '/api/gemini/explanation') {
@@ -140,6 +174,10 @@ createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, error.status || 400, { error: error.message || 'Unable to generate briefing.' });
     }
+    return;
+  }
+  if (request.method === 'GET' && url.pathname === '/api/dataset/status') {
+    sendJson(response, 200, getDatasetStatus());
     return;
   }
   if (request.method === 'GET') return serveStatic(url.pathname, response);
