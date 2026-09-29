@@ -1,42 +1,100 @@
-import { ForecastObservation } from '../types';
+import type { EventType, ForecastObservation } from '../types/index.ts';
+import { EVENT_PROFILES, REGION_CLIMATOLOGY, STATE_POSITIONS, wetness } from './regions.ts';
 
-// Local, deterministic sample records for the prototype. These are not IMD
-// observations and must be replaced before making operational claims.
-export const DEMO_FORECAST_OBSERVATIONS: ForecastObservation[] = [
-  ['Odisha', '2023-06-16', '2023-06-21', 5, 92, 151, 29, 38, 1001, 'Monsoon depression'],
-  ['Odisha', '2022-07-11', '2022-07-16', 5, 74, 121, 28, 34, 1003, 'Bay low'],
-  ['Odisha', '2021-08-04', '2021-08-09', 5, 108, 114, 30, 29, 1005, 'Active monsoon'],
-  ['Odisha', '2020-09-10', '2020-09-15', 5, 66, 83, 29, 25, 1007, 'Depression'],
-  ['Odisha', '2019-07-18', '2019-07-23', 5, 55, 60, 28, 22, 1008, 'Monsoon trough'],
-  ['Assam', '2023-06-05', '2023-06-10', 5, 118, 184, 27, 31, 1000, 'Monsoon depression'],
-  ['Assam', '2022-07-08', '2022-07-13', 5, 102, 156, 27, 29, 1002, 'Heavy rainfall'],
-  ['Assam', '2021-06-20', '2021-06-25', 5, 88, 111, 28, 24, 1005, 'Monsoon low'],
-  ['Assam', '2020-07-15', '2020-07-20', 5, 71, 79, 27, 20, 1007, 'Monsoon trough'],
-  ['Bihar', '2023-08-02', '2023-08-07', 5, 79, 132, 30, 25, 1003, 'Monsoon depression'],
-  ['Bihar', '2022-07-18', '2022-07-23', 5, 67, 109, 31, 21, 1005, 'Heavy rainfall'],
-  ['Bihar', '2021-08-11', '2021-08-16', 5, 64, 84, 30, 18, 1007, 'Monsoon low'],
-  ['Bihar', '2020-09-03', '2020-09-08', 5, 51, 58, 29, 15, 1009, 'Monsoon trough'],
-  ['Maharashtra', '2023-07-01', '2023-07-06', 5, 86, 154, 27, 33, 1002, 'Heavy rainfall'],
-  ['Maharashtra', '2022-08-05', '2022-08-10', 5, 72, 128, 27, 28, 1004, 'Monsoon depression'],
-  ['Maharashtra', '2021-07-14', '2021-07-19', 5, 61, 94, 28, 24, 1006, 'Monsoon low'],
-  ['Maharashtra', '2020-06-23', '2020-06-28', 5, 49, 59, 29, 18, 1008, 'Monsoon onset'],
-  ['Kerala', '2023-06-02', '2023-06-07', 5, 94, 166, 27, 36, 1001, 'Monsoon onset'],
-  ['Kerala', '2022-05-25', '2022-05-30', 5, 81, 142, 28, 32, 1003, 'Monsoon onset'],
-  ['Kerala', '2021-06-10', '2021-06-15', 5, 69, 115, 27, 26, 1005, 'Monsoon low'],
-  ['Kerala', '2020-07-08', '2020-07-13', 5, 58, 67, 27, 21, 1007, 'Active monsoon'],
-  ['Uttar Pradesh', '2023-08-07', '2023-08-12', 5, 62, 110, 31, 22, 1004, 'Monsoon depression'],
-  ['Uttar Pradesh', '2022-07-21', '2022-07-26', 5, 55, 96, 31, 19, 1006, 'Heavy rainfall'],
-  ['Uttar Pradesh', '2021-08-14', '2021-08-19', 5, 49, 68, 30, 16, 1008, 'Monsoon trough'],
-  ['Uttar Pradesh', '2020-09-09', '2020-09-14', 5, 43, 51, 29, 14, 1010, 'Weak monsoon'],
-].map(([region, forecastIssuedAt, validAt, leadDays, rainfallForecast, rainfallObserved, temperature, windSpeed, pressure, eventType]) => ({
-  region: region as string,
-  forecastIssuedAt: forecastIssuedAt as string,
-  validAt: validAt as string,
-  leadDays: leadDays as number,
-  rainfallForecast: rainfallForecast as number,
-  rainfallObserved: rainfallObserved as number,
-  temperature: temperature as number,
-  windSpeed: windSpeed as number,
-  pressure: pressure as number,
-  eventType: eventType as string,
-}));
+// Synthetic, deterministic hindcast archive for the prototype. Each case is one
+// weather event in one region, forecast at lead times Day 1–10 and paired with
+// the "observed" value. Error growth with lead time and regime is modelled on
+// published NWP verification behaviour, but these are NOT IMD observations and
+// must be replaced before making operational claims.
+
+export const HINDCAST_YEARS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023];
+const EVENTS_PER_REGION_YEAR = 3;
+const MAX_LEAD = 10;
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function gaussian(random: () => number) {
+  const u = Math.max(random(), 1e-9);
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
+}
+
+function pickWeighted<T extends string>(weights: Partial<Record<T, number>>, random: () => number): T {
+  const entries = Object.entries(weights) as [T, number][];
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = random() * total;
+  for (const [key, weight] of entries) {
+    roll -= weight;
+    if (roll <= 0) return key;
+  }
+  return entries[entries.length - 1][0];
+}
+
+const round1 = (value: number) => Math.round(value * 10) / 10;
+
+function isoDate(year: number, dayOfYear: number) {
+  const date = new Date(Date.UTC(year, 0, 1));
+  date.setUTCDate(date.getUTCDate() + dayOfYear);
+  return date.toISOString().slice(0, 10);
+}
+
+function generate(): ForecastObservation[] {
+  const random = mulberry32(20240601);
+  const records: ForecastObservation[] = [];
+
+  for (const { name: region } of STATE_POSITIONS) {
+    const climate = REGION_CLIMATOLOGY[region];
+    const wet = wetness(region);
+    for (const year of HINDCAST_YEARS) {
+      for (let event = 0; event < EVENTS_PER_REGION_YEAR; event += 1) {
+        const eventType = pickWeighted<EventType>(climate.events, random);
+        const profile = EVENT_PROFILES[eventType];
+        // Monsoon-season valid date (mid-May to end of September).
+        const validDay = 135 + Math.floor(random() * 135);
+        const strength = 0.6 + random() * 0.8;
+
+        const rainfallObserved = Math.max(0, (climate.rainfall * 0.4 + profile.rain * wet * strength) * Math.exp(gaussian(random) * 0.35));
+        const temperatureObserved = climate.temperature + profile.temp * strength + gaussian(random) * 1.1;
+        const windSpeed = Math.max(3, climate.windSpeed * 0.5 + profile.wind * strength * 0.8 + gaussian(random) * 3);
+        const pressure = climate.pressure + profile.pressure * strength + gaussian(random) * 1.2;
+        const tendency = (random() < 0.5 ? -1 : 1) * profile.tendency * strength * (0.6 + random() * 0.8);
+
+        for (let lead = 1; lead <= MAX_LEAD; lead += 1) {
+          const growth = 0.35 + profile.leadGrowth * lead;
+          const rainSd = (2 + profile.rainErr * rainfallObserved) * growth;
+          const rainfallForecast = Math.max(0, rainfallObserved * (1 + profile.rainBias * growth) + gaussian(random) * rainSd);
+          const tempSd = profile.tempErr * (0.4 + profile.leadGrowth * lead);
+          const tempBias = profile.tempBias * profile.temp * strength * (0.3 + 0.1 * lead);
+          const temperatureForecast = temperatureObserved + tempBias + gaussian(random) * tempSd;
+
+          records.push({
+            region,
+            forecastIssuedAt: isoDate(year, validDay - lead),
+            validAt: isoDate(year, validDay),
+            leadDays: lead,
+            eventType,
+            rainfallForecast: round1(rainfallForecast),
+            rainfallObserved: round1(rainfallObserved),
+            temperatureForecast: round1(temperatureForecast),
+            temperatureObserved: round1(temperatureObserved),
+            // Forecast-time predictors carry a little lead-dependent noise too.
+            windSpeed: round1(Math.max(2, windSpeed + gaussian(random) * 0.4 * lead)),
+            pressure: round1(pressure + gaussian(random) * 0.3 * lead),
+            pressureTendency: round1(tendency + gaussian(random) * 0.2 * lead),
+          });
+        }
+      }
+    }
+  }
+  return records;
+}
+
+export const DEMO_FORECAST_OBSERVATIONS: ForecastObservation[] = generate();

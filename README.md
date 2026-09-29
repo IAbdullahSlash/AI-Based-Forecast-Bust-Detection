@@ -1,14 +1,37 @@
 # AI Forecast Bust Detection
 
-> Current prototype scope: a deterministic rainfall MVP. It aligns local forecast/observation pairs, calculates error metrics and a P90 bust threshold, retrieves similar cases, and derives a transparent probability. The local data is synthetic and must be replaced with archived NWP plus matching observations before operational use.
+> Prototype scope: rainfall and temperature forecast-bust detection for 25 Indian states at lead times Day 1–10. The hindcast archive (6,000 forecast/observation pairs, 2016–2023) and the current 10-day forecast scenario are **synthetic**. The NetCDF files in `dataset/` are real NCMRWF Unified Model hindcast rainfall. They are ingested and displayed, but they can't drive bust statistics until matching observations are added.
+
+## How the bust probability is computed
+
+1. **Bust definition:** an absolute forecast error larger than 90% of that region's short-range (Day 1–3) errors (P90), with a floor of 15 mm or 2 °C. The threshold is fixed across lead times, so longer leads bust more often.
+2. **ML model:** L2-regularised logistic regression trained in-app on forecast-time predictors. These are intensity, temperature and pressure anomalies, pressure tendency, lead time and weather regime (cyclone, monsoon depression, western disturbance, heat wave, active/break monsoon, and so on). It is verified on held-out 2023 cases (AUC ≈ 0.84–0.88).
+3. **k-NN analogues:** the 7 most similar historical cases at a similar lead time. Their similarity-weighted bust rate gives a second estimate.
+4. **Blend:** 60% ML plus 40% analogues. Confidence is **Low** at 40% or above, **Medium** from 20% to 40%, and **High** below 20%.
+5. **Explainability:** rule-based meteorological reasons (active system, pressure tendency, deep low, IMD rainfall categories, heat-wave criteria, lead-time error growth, analogue outcomes) plus the model features that push the probability up. An optional Gemini briefing turns these into prose.
+
+## JSON API (`npm run server`, port 8787)
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/confidence?day=1..10&variable=rainfall\|temperature` | Confidence, bust probability and reasons for every region |
+| `GET /api/region?name=Odisha&day=5&variable=rainfall` | Full result, analogues, lead-time error curve and explanation for one region |
+| `GET /api/heatmap?variable=rainfall` | Region × Day 1–10 bust-probability matrix |
+| `GET /api/error-prone?variable=rainfall` | Regions with at least one low-confidence day |
+| `GET /api/model` | Verification metrics for both bust models |
+| `GET /api/nwp` | Per-state rainfall extracted from the NCMRWF NetCDF files |
+| `GET /api/dataset/status` | Catalogue of `dataset/*.nc` files |
+| `POST /api/gemini/explanation` | Gemini briefing (needs `GEMINI_API_KEY`) |
+
+The server imports the same TypeScript engine as the dashboard, so it needs Node ≥ 22.18, which runs `.ts` files through type stripping.
 
 ## Gemini evidence briefings
 
 The Gemini key is read only by `server.mjs`; never rename it to a `VITE_` variable. Run the API/server with `npm run server`, then use the **Generate** button in the dashboard. For local development, also run `npm run dev` in a second terminal; Vite proxies `/api` to the server. The default model is `gemini-3.5-flash`; override it with `GEMINI_MODEL` in `.env` only if your Gemini account requires another available model.
 
-## NetCDF forecast ingestion foundation
+## NetCDF forecast ingestion
 
-Place forecast NetCDF files in `dataset/` using the naming pattern `<variable>_ICYYYYMMDD_dayNN.nc`, such as `APCP-sfc_IC20150601_day05.nc`. The server now exposes a local catalogue at `/api/dataset/status`; the dashboard shows its file count, initialization dates, and lead-day coverage. This validates and inventories forecast inputs without treating them as observations. A later observation archive must provide matching valid time, location/grid, and rainfall values before bust metrics can be calculated from these files.
+Place forecast NetCDF files in `dataset/` using the naming pattern `<variable>_ICYYYYMMDD_dayNN.nc`, such as `APCP-sfc_IC20150601_day05.nc`. `/api/dataset/status` lists them. `npm run extract:nwp` (needs `pip install h5py numpy`) averages each state's grid points within ±1° into `src/data/nwpForecasts.json`, and the dashboard shows the result in the **Real NWP ingestion** panel. The next step is pairing these forecasts with IMD gridded observations for the same valid dates. Each pair becomes a row of the hindcast archive in place of the synthetic records in `src/data/demoDataset.ts`.
 
 A real-time dashboard for monitoring **forecast confidence** and **bust probability** across Indian states — built with React, TypeScript, Tailwind CSS, and Vite.
 
@@ -169,8 +192,8 @@ Vite automatically loads `.env` files with the `VITE_` prefix.
 ## 📝 Notes
 
 - Forecast confidence and bust probability are computed from historical error patterns
-- The "AI explanation" is a template-based explanation engine
-- Historical analogues are pre-seeded mock data — replace with real historical records for production
+- Explanations are rule-based meteorological reasons plus an optional Gemini narrative
+- Historical analogues come from the synthetic hindcast archive; replace it with real paired records for production
 - The map uses SVG `viewBox` for zoom/pan — no external mapping library needed
 
 ---

@@ -4,15 +4,18 @@ import {
   RefreshCw, Zap, AlertTriangle, ChevronDown, Sun, Cloud, Layers, Radio, Activity, CheckCircle2,
   ThermometerIcon, Droplets, WindIcon, GaugeIcon, Satellite, CloudDrizzle, TrendingUp,
 } from 'lucide-react';
-import { ForecastVariable, Confidence } from './types';
+import { ForecastVariable, Confidence, EvaluatedVariable, ReasonItem } from './types';
 import { STATE_POSITIONS } from './data/mockData';
 import {
-  getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay,
+  getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
 } from './analysis/forecastEngine';
+import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard, NwpIngestionPanel } from './components/Insights';
 import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
 import { DatasetStatus, fetchDatasetStatus } from './api/datasetApi';
+
+const EVALUATED: ForecastVariable[] = ['rainfall', 'temperature'];
 
 const VARIABLES: { key: ForecastVariable; label: string; icon: React.ReactNode }[] = [
   { key: 'rainfall', label: 'Rainfall', icon: <CloudRain size={15} /> },
@@ -48,31 +51,29 @@ function mapColor(mode: string, conf: Confidence, prob: number): string {
   return bustColor(prob);
 }
 
-function getConfidence(day: number, region: string): Confidence {
-  const cb = getConfidenceByDay();
-  return cb[day]?.[region]?.confidence || 'medium';
+function getConfidence(day: number, region: string, variable: EvaluatedVariable): Confidence {
+  return getConfidenceByDay(variable)[day]?.[region]?.confidence || 'medium';
 }
 
-function getBustProb(day: number, region: string): number {
-  const cb = getConfidenceByDay();
-  return cb[day]?.[region]?.bustProbability || 50;
+function getBustProb(day: number, region: string, variable: EvaluatedVariable): number {
+  return getConfidenceByDay(variable)[day]?.[region]?.bustProbability ?? 0;
 }
 
-function getForecastVal(day: number, region: string): number {
-  const cb = getConfidenceByDay();
-  return cb[day]?.[region]?.forecastValue || 100;
-}
+const REASON_STYLES: Record<ReasonItem['kind'], { label: string; className: string }> = {
+  system: { label: 'System', className: 'bg-indigo-100 text-indigo-700' },
+  dynamics: { label: 'Dynamics', className: 'bg-orange-100 text-orange-700' },
+  intensity: { label: 'Intensity', className: 'bg-red-100 text-red-700' },
+  lead: { label: 'Lead time', className: 'bg-slate-200 text-slate-700' },
+  analogue: { label: 'Analogues', className: 'bg-blue-100 text-blue-700' },
+  model: { label: 'ML model', className: 'bg-purple-100 text-purple-700' },
+  history: { label: 'History', className: 'bg-slate-200 text-slate-700' },
+};
 
-function SummaryCards({ day, variable }: { day: number; variable: ForecastVariable }) {
-  const stats = useMemo(() => getSummaryStats(day), [day]);
+function SummaryCards({ day, variable }: { day: number; variable: EvaluatedVariable }) {
   const summary = useMemo(() => {
-    let h = 0, m = 0, l = 0;
-    STATE_POSITIONS.forEach((s) => {
-      const c = getConfidence(day, s.name);
-      if (c === 'high') h++; else if (c === 'medium') m++; else l++;
-    });
-    return { total: STATE_POSITIONS.length, high: h, med: m, low: l };
-  }, [day]);
+    const stats = getSummaryStats(day, variable);
+    return { total: stats.regionsAnalyzed, high: stats.highConfidence, med: stats.mediumConfidence, low: stats.lowConfidence };
+  }, [day, variable]);
 
   return (
     <div className="grid grid-cols-4 gap-3">
@@ -95,7 +96,7 @@ function SummaryCards({ day, variable }: { day: number; variable: ForecastVariab
   );
 }
 
-function ForecastTimeline({ day, setDay }: { day: number; setDay: (d: number) => void }) {
+function ForecastTimeline({ day, setDay, variable }: { day: number; setDay: (d: number) => void; variable: EvaluatedVariable }) {
   return (
     <div className="card p-3">
       <div className="flex items-center gap-2 mb-2">
@@ -104,12 +105,9 @@ function ForecastTimeline({ day, setDay }: { day: number; setDay: (d: number) =>
       </div>
       <div className="flex items-center gap-1">
         {DAYS.map((d) => {
-          let h = 0, m = 0, l = 0;
-          STATE_POSITIONS.forEach((s) => {
-            const c = getConfidence(d, s.name);
-            if (c === 'high') h++; else if (c === 'medium') m++; else l++;
-          });
-          const conf = l > m && l > h ? 'low' : h > m ? 'high' : 'medium';
+          const stats = getSummaryStats(d, variable);
+          const risk = stats.lowConfidence * 2 + stats.mediumConfidence;
+          const conf: Confidence = risk >= 10 ? 'low' : risk >= 5 ? 'medium' : 'high';
           const col = confidenceColor(conf);
           return (
             <button
@@ -119,6 +117,7 @@ function ForecastTimeline({ day, setDay }: { day: number; setDay: (d: number) =>
             >
               <span className="text-[10px] text-slate-500 mb-1">Day {d}</span>
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: col }} />
+              <span className="text-[9px] text-slate-400 mt-0.5">{stats.lowConfidence} low</span>
             </button>
           );
         })}
@@ -170,10 +169,10 @@ function ConfidenceGauge({ value, label, color }: { value: number; label: string
   );
 }
 
-function RegionDetailPanel({ region, day, variable, onClose }: { region: string; day: number; variable: ForecastVariable; onClose: () => void }) {
-  const data = getRegionData(region, day);
-  const analogues = getAnalogueData(region, day);
-  const explanation = getExplanation(region, day);
+function RegionDetailPanel({ region, day, variable, onClose }: { region: string; day: number; variable: EvaluatedVariable; onClose: () => void }) {
+  const data = getRegionData(region, day, variable);
+  const analogues = getAnalogueData(region, day, variable);
+  const explanation = getExplanation(region, day, variable);
 
   return (
     <div className="card p-4 w-80 flex-shrink-0 border-l-2 border-blue-200 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -193,45 +192,59 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
         <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
           <div className="h-full rounded-full transition-all duration-500" style={{ width: `${data.bustProbability}%`, backgroundColor: bustColor(data.bustProbability) }} />
         </div>
+        <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+          <span>ML model {data.mlProbability}%</span>
+          <span>Analogues {data.analogueProbability}%</span>
+          <span>Bust ≥ {data.bustThreshold} {data.unit}</span>
+        </div>
+        {data.fingerprint.systemName && (
+          <div className="mt-2 text-[11px] bg-indigo-50 text-indigo-800 rounded-md px-2 py-1">
+            {data.fingerprint.systemName}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Forecast</div>
-          <div className="text-lg font-bold text-slate-900">{data.forecastValue} <span className="text-xs font-normal text-slate-500">mm</span></div>
+          <div className="text-lg font-bold text-slate-900">{data.forecastValue} <span className="text-xs font-normal text-slate-500">{data.unit}</span></div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2">
           <div className="text-[10px] text-slate-500 uppercase">Confidence</div>
           <div className={`text-lg font-bold ${data.confidence === 'high' ? 'text-green-600' : data.confidence === 'medium' ? 'text-yellow-600' : 'text-red-600'}`}>{data.confidence.toUpperCase()}</div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2">
-          <div className="text-[10px] text-slate-500 uppercase">Mean Error</div>
-          <div className="text-lg font-bold text-slate-900">{data.historicalMeanError} <span className="text-xs font-normal text-slate-500">mm</span></div>
+          <div className="text-[10px] text-slate-500 uppercase">MAE at Day {day}</div>
+          <div className="text-lg font-bold text-slate-900">{data.historicalMeanError} <span className="text-xs font-normal text-slate-500">{data.unit}</span></div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2">
-          <div className="text-[10px] text-slate-500 uppercase">Bust Freq</div>
+          <div className="text-[10px] text-slate-500 uppercase">Bust Freq (Day {day})</div>
           <div className="text-lg font-bold text-slate-900">{data.historicalBustFrequency}%</div>
         </div>
       </div>
 
       <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-slate-700">Similar Cases</span>
-          <span className="text-[11px] text-slate-500">{data.similarCases} total · {data.casesWithLargeError} large error</span>
-        </div>
-        <ConfidenceGauge value={data.historicalBustFrequency} label="Historical Bust Frequency" color={bustColor(data.historicalBustFrequency)} />
+        <LeadErrorChart region={region} variable={variable} day={day} />
       </div>
 
       <div className="mb-4">
-        <h4 className="text-xs font-semibold text-slate-700 mb-2">Key Reasons</h4>
-        <ul className="space-y-1">
-          {data.keyReasons.map((r, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-xs text-slate-600">
-              <span className="w-1 h-1 bg-blue-500 rounded-full mt-1.5 flex-shrink-0" />
-              {r}
+        <h4 className="text-xs font-semibold text-slate-700 mb-2">Why confidence is {data.confidence}: key meteorological reasons</h4>
+        <ul className="space-y-1.5">
+          {data.reasons.map((r, i) => (
+            <li key={i} className="text-xs text-slate-600 leading-snug">
+              <span className={`inline-block px-1.5 rounded text-[9px] font-semibold mr-1 ${REASON_STYLES[r.kind].className}`}>{REASON_STYLES[r.kind].label}</span>
+              {r.text}
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-slate-700">Similar Cases</span>
+          <span className="text-[11px] text-slate-500">{data.similarCases} same-regime · {data.casesWithLargeError}/{analogues.length} closest large error</span>
+        </div>
+        <ConfidenceGauge value={data.historicalBustFrequency} label={`Historical bust rate at Day ${day}`} color={bustColor(data.historicalBustFrequency)} />
       </div>
 
       <div className="mb-4">
@@ -245,10 +258,10 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
                   {a.bustStatus}
                 </span>
               </div>
-              <div className="text-slate-500">{a.region} · {a.date}</div>
+              <div className="text-slate-500">{a.region} · {a.date} · Day {a.leadDays} lead</div>
               <div className="flex justify-between text-slate-500 mt-0.5">
                 <span>Similarity: {a.similarity}%</span>
-                <span>Error: {a.forecastError}mm</span>
+                <span>Error: {a.forecastError} {data.unit}</span>
               </div>
             </div>
           ))}
@@ -263,8 +276,8 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
   );
 }
 
-function HistoricalAnalogues({ region, day }: { region: string; day: number }) {
-  const analogues = getAnalogueData(region, day);
+function HistoricalAnalogues({ region, day, variable }: { region: string; day: number; variable: EvaluatedVariable }) {
+  const analogues = getAnalogueData(region, day, variable);
   return (
     <div className="card p-3">
       <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Clock size={15} /> Historical Analogues</h3>
@@ -273,7 +286,7 @@ function HistoricalAnalogues({ region, day }: { region: string; day: number }) {
           <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-lg p-2 text-xs">
             <div className="flex-1">
               <div className="font-medium text-slate-800">{a.eventType}</div>
-              <div className="text-slate-500">{a.region} · {a.date}</div>
+              <div className="text-slate-500">{a.region} · {a.date} · D{a.leadDays}</div>
             </div>
             <div className="text-center flex-shrink-0">
               <div className="font-bold text-slate-800">{a.similarity}%</div>
@@ -289,20 +302,20 @@ function HistoricalAnalogues({ region, day }: { region: string; day: number }) {
   );
 }
 
-function AIExplanation({ region, day }: { region: string; day: number }) {
-  const fallbackExplanation = getExplanation(region, day);
+function AIExplanation({ region, day, variable }: { region: string; day: number; variable: EvaluatedVariable }) {
+  const fallbackExplanation = getExplanation(region, day, variable);
   const [briefing, setBriefing] = useState<{ key: string; text: string } | null>(null);
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const key = `${region}-${day}`;
+  const key = `${region}-${day}-${variable}`;
   const visibleBriefing = briefing?.key === key ? briefing.text : null;
 
   const generateBriefing = async () => {
     setIsGenerating(true);
     setBriefingError(null);
     try {
-      const result = getRegionData(region, day);
-      const analogues = getAnalogueData(region, day);
+      const result = getRegionData(region, day, variable);
+      const analogues = getAnalogueData(region, day, variable);
       const text = await generateGeminiBriefing({ region, day, result, analogues });
       setBriefing({ key, text });
     } catch (error) {
@@ -327,7 +340,7 @@ function AIExplanation({ region, day }: { region: string; day: number }) {
       <p className="text-xs text-slate-600 leading-relaxed mb-2">{visibleBriefing || fallbackExplanation}</p>
       {briefingError && <p className="text-[10px] text-red-600 mb-2">{briefingError}</p>}
       <div className="flex flex-wrap gap-1">
-        {['Paired local records', 'P90 bust threshold', 'Analogue similarity', 'Historical MAE', 'Forecast intensity'].map((tag) => (
+        {['Hindcast pairs', 'P90 bust threshold', 'Logistic model', 'k-NN analogues', 'Rule-based met reasons'].map((tag) => (
           <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-medium">{tag}</span>
         ))}
       </div>
@@ -360,8 +373,9 @@ function DataSources() {
           {[
             { name: 'NWP rainfall forecast files', status: forecastStatus, icon: <CloudRain size={12} /> },
             { name: 'Forecast coverage', status: coverageStatus, icon: <Clock size={12} /> },
-            { name: 'Historical error engine', status: 'Deterministic', icon: <Clock size={12} /> },
-            { name: 'Observed rainfall archive', status: dataset?.observationDataAvailable ? 'Available' : 'Required for evaluation', icon: <Activity size={12} /> },
+            { name: 'Hindcast archive (synthetic)', status: '6,000 pairs · 2016–2023 · D1–10', icon: <Clock size={12} /> },
+            { name: 'Current forecast scenario', status: 'Synthetic, 10 Jun 2026', icon: <Activity size={12} /> },
+            { name: 'Observed rainfall archive', status: dataset?.observationDataAvailable ? 'Available' : 'Required for real evaluation', icon: <Activity size={12} /> },
             { name: 'State/grid aggregation', status: 'Next ingestion step', icon: <MapPin size={12} /> },
           ].map((s) => (
             <div key={s.name} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs">
@@ -378,9 +392,10 @@ function DataSources() {
 function SystemStatus() {
   const items = [
     { name: 'Forecast / observation alignment', status: 'Ready' },
-    { name: 'Historical analogue engine', status: 'Ready' },
-    { name: 'Deterministic confidence score', status: 'Ready' },
-    { name: 'Evidence-based explanation', status: 'Ready' },
+    { name: 'k-NN analogue engine', status: 'Ready' },
+    { name: 'Logistic bust model (trained in-app)', status: 'Ready' },
+    { name: 'Rule-based meteorological explainer', status: 'Ready' },
+    { name: 'JSON API (/api/confidence, /api/region, /api/error-prone)', status: 'Ready' },
   ];
   return (
     <div className="card p-3">
@@ -399,13 +414,17 @@ function SystemStatus() {
 
 export default function App() {
   const [day, setDay] = useState(5);
-  const [variable, setVariable] = useState<ForecastVariable>('rainfall');
+  const [variable, setVariable] = useState<EvaluatedVariable>('rainfall');
   const [mapMode, setMapMode] = useState<'confidence' | 'bust'>('confidence');
   const [selectedRegion, setSelectedRegion] = useState<string | null>('Odisha');
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const { weatherData, loading: weatherLoading, error: weatherError, refetch: refetchWeather, lastFetchTime } = useWeatherData();
 
-  const selectedData = selectedRegion ? getRegionData(selectedRegion, day) : null;
+  const selectedData = selectedRegion ? getRegionData(selectedRegion, day, variable) : null;
+  const focusRegion = (region: string, focusDay: number) => {
+    setSelectedRegion(region);
+    setDay(focusDay);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -421,7 +440,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <span className="text-[10px] px-2 py-0.5 bg-blue-600/30 text-blue-300 rounded-full border border-blue-500/30 flex items-center gap-1"><Radio size={8} /> Demo Mode</span>
             <Clock size={14} className="text-slate-400" />
-            <span className="text-xs text-slate-400">Local deterministic demo</span>
+            <span className="text-xs text-slate-400">{SCENARIO.label}</span>
           </div>
         </div>
       </header>
@@ -435,10 +454,10 @@ export default function App() {
               {VARIABLES.map((v) => (
                 <button
                   key={v.key}
-                  onClick={() => v.key === 'rainfall' && setVariable(v.key)}
-                  disabled={v.key !== 'rainfall'}
-                  title={v.key === 'rainfall' ? 'Rainfall is implemented using local paired records' : 'Pending matching historical datasets'}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 disabled:cursor-not-allowed disabled:opacity-60'}`}
+                  onClick={() => EVALUATED.includes(v.key) && setVariable(v.key as EvaluatedVariable)}
+                  disabled={!EVALUATED.includes(v.key)}
+                  title={EVALUATED.includes(v.key) ? `${v.label} bust detection from paired hindcast records` : 'Pending matching historical datasets'}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60'}`}
                 >
                   {v.icon} {v.label}
                 </button>
@@ -479,7 +498,7 @@ export default function App() {
       {/* Main Content */}
       <div className="flex-1 p-4 space-y-3 overflow-auto">
         <SummaryCards day={day} variable={variable} />
-        <ForecastTimeline day={day} setDay={setDay} />
+        <ForecastTimeline day={day} setDay={setDay} variable={variable} />
 
         <div className="flex gap-4" style={{ minHeight: '420px' }}>
           {/* Map */}
@@ -523,12 +542,25 @@ export default function App() {
           )}
         </div>
 
+        {/* Region x lead-time view */}
+        <div className="grid grid-cols-3 gap-3 items-start">
+          <div className="col-span-2">
+            <BustHeatmap variable={variable} day={day} region={selectedRegion} onSelect={focusRegion} />
+          </div>
+          <div className="space-y-3">
+            <ErrorProneAreas variable={variable} onSelect={focusRegion} />
+            <ActiveSystems day={day} />
+            <ModelCard variable={variable} />
+          </div>
+        </div>
+
         {/* Bottom Section */}
         <div className="grid grid-cols-3 gap-3">
-          <AIExplanation region={selectedRegion || 'Odisha'} day={day} />
-          <HistoricalAnalogues region={selectedRegion || 'Odisha'} day={day} />
+          <AIExplanation region={selectedRegion || 'Odisha'} day={day} variable={variable} />
+          <HistoricalAnalogues region={selectedRegion || 'Odisha'} day={day} variable={variable} />
           <DataSources />
         </div>
+        <NwpIngestionPanel />
         <SystemStatus />
 
         {/* Live Weather Panel */}
@@ -554,7 +586,7 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-6 gap-2">
               {Array.from(weatherData.entries()).slice(0, 18).map(([region, data]) => {
-                const col = mapColor(mapMode, getConfidence(day, region), getBustProb(day, region));
+                const col = mapColor(mapMode, getConfidence(day, region, variable), getBustProb(day, region, variable));
                 return (
                   <div key={region} className="bg-slate-50 rounded-lg p-2.5 border border-slate-100 hover:border-slate-300 transition-all">
                     <div className="text-[10px] font-semibold text-slate-700 mb-1.5">{region}</div>
@@ -574,7 +606,7 @@ export default function App() {
                     </div>
                     <div className="mt-1.5 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: col }} />
-                      <span className="text-[9px] text-slate-400">{getConfidence(day, region).toUpperCase()}</span>
+                      <span className="text-[9px] text-slate-400">{getConfidence(day, region, variable).toUpperCase()}</span>
                     </div>
                   </div>
                 );

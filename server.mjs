@@ -1,7 +1,14 @@
-import { createReadStream, existsSync, readdirSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The analysis engine is shared with the dashboard; Node >= 22.18 runs the
+// TypeScript sources directly via type stripping.
+import {
+  DAYS, SCENARIO, getAnalogueData, getConfidenceByDay, getErrorProneRegions, getExplanation,
+  getLeadErrorCurve, getModelMetrics, getRegionData,
+} from './src/analysis/forecastEngine.ts';
+import { STATE_POSITIONS } from './src/data/regions.ts';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const distDirectory = resolve(root, 'dist');
@@ -55,6 +62,8 @@ function createPrompt(evidence) {
     forecastError: asNumber(item.forecastError),
     bustStatus: String(item.bustStatus || '').slice(0, 30),
   }));
+  const variable = result.variable === 'temperature' ? 'temperature' : 'rainfall';
+  const unit = variable === 'temperature' ? 'degC' : 'mm';
 
   return `You are writing a concise meteorological analyst briefing for a forecast-bust dashboard.\n\n` +
     `Use ONLY the evidence below. Do not calculate, change, endorse, or invent a probability. ` +
@@ -63,12 +72,15 @@ function createPrompt(evidence) {
     `Evidence:\n${JSON.stringify({
       region,
       forecastDay: day,
-      rainfallForecastMm: result.forecastValue,
+      variable,
+      [`forecast_${unit}`]: result.forecastValue,
       bustProbabilityPercent: result.bustProbability,
+      mlModelProbabilityPercent: asNumber(result.mlProbability),
+      analogueProbabilityPercent: asNumber(result.analogueProbability),
       confidence: result.confidence,
-      historicalMaeMm: result.historicalMeanError,
+      [`historicalMaeAtThisLead_${unit}`]: result.historicalMeanError,
       historicalBustFrequencyPercent: result.historicalBustFrequency,
-      p90ThresholdAndReasons: result.keyReasons,
+      meteorologicalReasons: Array.isArray(result.keyReasons) ? result.keyReasons.slice(0, 8).map((reason) => String(reason).slice(0, 300)) : [],
       closestAnalogues: safeAnalogues,
     })}`;
 }
@@ -131,6 +143,77 @@ function serveStatic(requestPath, response) {
   createReadStream(target).pipe(response);
 }
 
+const EVALUATED_VARIABLES = ['rainfall', 'temperature'];
+const REGION_NAMES = new Set(STATE_POSITIONS.map((state) => state.name));
+
+function queryOptions(url) {
+  const day = Number(url.searchParams.get('day') ?? 5);
+  const variable = url.searchParams.get('variable') ?? 'rainfall';
+  if (!Number.isInteger(day) || !DAYS.includes(day)) throw new Error('day must be an integer from 1 to 10.');
+  if (!EVALUATED_VARIABLES.includes(variable)) throw new Error(`variable must be one of: ${EVALUATED_VARIABLES.join(', ')}.`);
+  return { day, variable };
+}
+
+function regionSummary(region, day, variable) {
+  const data = getRegionData(region, day, variable);
+  return {
+    region,
+    confidence: data.confidence,
+    bustProbability: data.bustProbability,
+    mlProbability: data.mlProbability,
+    analogueProbability: data.analogueProbability,
+    forecastValue: data.forecastValue,
+    unit: data.unit,
+    weatherSystem: data.fingerprint.systemName,
+    regime: data.fingerprint.eventType,
+    reasons: data.keyReasons,
+  };
+}
+
+/** Read-only JSON API over the analysis engine. Returns null for unknown paths. */
+function handleAnalysisApi(url) {
+  switch (url.pathname) {
+    case '/api/confidence': {
+      const { day, variable } = queryOptions(url);
+      return {
+        scenario: SCENARIO,
+        day,
+        variable,
+        regions: STATE_POSITIONS.map((state) => regionSummary(state.name, day, variable)),
+      };
+    }
+    case '/api/region': {
+      const { day, variable } = queryOptions(url);
+      const name = url.searchParams.get('name') ?? '';
+      if (!REGION_NAMES.has(name)) throw new Error(`Unknown region. Use one of: ${[...REGION_NAMES].join(', ')}.`);
+      return {
+        scenario: SCENARIO,
+        result: getRegionData(name, day, variable),
+        analogues: getAnalogueData(name, day, variable),
+        leadErrorCurve: getLeadErrorCurve(name, variable),
+        explanation: getExplanation(name, day, variable),
+      };
+    }
+    case '/api/heatmap': {
+      const { variable } = queryOptions(url);
+      return { scenario: SCENARIO, variable, byDay: getConfidenceByDay(variable) };
+    }
+    case '/api/error-prone': {
+      const { variable } = queryOptions(url);
+      return { scenario: SCENARIO, variable, regions: getErrorProneRegions(variable) };
+    }
+    case '/api/nwp': {
+      const file = resolve(root, 'src/data/nwpForecasts.json');
+      if (!existsSync(file)) throw new Error('No extracted NWP data. Run npm run extract:nwp first.');
+      return JSON.parse(readFileSync(file, 'utf8'));
+    }
+    case '/api/model':
+      return { rainfall: getModelMetrics('rainfall'), temperature: getModelMetrics('temperature') };
+    default:
+      return null;
+  }
+}
+
 function getDatasetStatus() {
   if (!existsSync(datasetDirectory)) {
     return {
@@ -178,6 +261,16 @@ createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/dataset/status') {
     sendJson(response, 200, getDatasetStatus());
+    return;
+  }
+  if (request.method === 'GET' && url.pathname.startsWith('/api/')) {
+    try {
+      const body = handleAnalysisApi(url);
+      if (body) sendJson(response, 200, body);
+      else sendJson(response, 404, { error: 'Unknown API endpoint.' });
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || 'Invalid request.' });
+    }
     return;
   }
   if (request.method === 'GET') return serveStatic(url.pathname, response);

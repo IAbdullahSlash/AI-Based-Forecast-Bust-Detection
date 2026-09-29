@@ -4,7 +4,7 @@ import {
   STATE_POSITIONS,
 } from '../data/mockData';
 import { getRegionData } from '../analysis/forecastEngine';
-import { ForecastVariable, Confidence } from '../types';
+import { EvaluatedVariable, Confidence } from '../types';
 
 function confidenceColor(conf: Confidence): string {
   return conf === 'high' ? '#22c55e' : conf === 'medium' ? '#eab308' : '#ef4444';
@@ -88,7 +88,7 @@ function parseVB(vb: string) {
 export default function IndiaMap({
   day, variable, mapMode, selectedRegion, onSelectRegion, hoveredRegion, onHoverRegion,
 }: {
-  day: number; variable: ForecastVariable; mapMode: 'confidence' | 'bust';
+  day: number; variable: EvaluatedVariable; mapMode: 'confidence' | 'bust';
   selectedRegion: string | null; onSelectRegion: (r: string | null) => void;
   hoveredRegion: string | null; onHoverRegion: (r: string | null) => void;
 }) {
@@ -173,7 +173,7 @@ export default function IndiaMap({
   }, [onHoverRegion]);
 
   const getRegionInfo = (name: string) => {
-    const d = getRegionData(name, day);
+    const d = getRegionData(name, day, variable);
     return {
       conf: d.confidence,
       bustProb: d.bustProbability,
@@ -373,8 +373,11 @@ export default function IndiaMap({
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: col }} />
                   {tooltipRegion}
                 </div>
+                {info.baseData.fingerprint.systemName && (
+                  <div className="text-[10px] text-indigo-300 mb-1">{info.baseData.fingerprint.systemName}</div>
+                )}
                 <div className="text-slate-300 text-[11px] space-y-0.5">
-                  <div className="flex justify-between gap-6"><span>Forecast</span><span className="font-medium">{info.forecastVal} mm</span></div>
+                  <div className="flex justify-between gap-6"><span>Forecast</span><span className="font-medium">{info.forecastVal} {info.baseData.unit}</span></div>
                   <div className="flex justify-between gap-6"><span>Bust Prob</span><span className="font-medium">{info.bustProb}%</span></div>
                   <div className="flex justify-between gap-6"><span>Confidence</span><span className="font-medium" style={{ color: confidenceColor(info.conf) }}>{info.conf.toUpperCase()}</span></div>
                 </div>

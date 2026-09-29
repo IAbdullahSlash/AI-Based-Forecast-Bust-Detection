@@ -32,6 +32,8 @@ pnpm-debug.log*
 
 # Claude
 .claude/
+claude.md
+
 
 # TypeScript
 *.tsbuildinfo
