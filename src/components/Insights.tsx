@@ -150,8 +150,8 @@ function rainCellColor(mm: number) {
   // IMD 24 h categories: light < 15.6, moderate < 64.5, heavy and above.
   if (mm >= 64.5) return { background: '#dc2626', color: '#fff' };
   if (mm >= 15.6) return { background: '#60a5fa', color: '#fff' };
-  if (mm >= 2.5) return { background: '#dbeafe', color: '#1e3a8a' };
-  return { background: '#f8fafc', color: '#94a3b8' };
+  if (mm >= 2.5) return { background: 'var(--rain-light-bg)', color: 'var(--rain-light-fg)' };
+  return { background: 'var(--rain-none-bg)', color: 'var(--rain-none-fg)' };
 }
 
 /** Real NCMRWF Unified Model hindcast rainfall read from dataset/*.nc. */
@@ -230,7 +230,7 @@ export function LeadErrorChart({ region, variable, day }: { region: string; vari
             fill={point.leadDays === day ? '#ef4444' : '#3b82f6'} />
         ))}
         {curve.map((point) => (
-          <text key={`t${point.leadDays}`} x={x(point.leadDays)} y={height - 1} fontSize={7} textAnchor="middle" fill="#64748b">{point.leadDays}</text>
+          <text key={`t${point.leadDays}`} x={x(point.leadDays)} y={height - 1} fontSize={7} textAnchor="middle" style={{ fill: 'var(--chart-muted)' }}>{point.leadDays}</text>
         ))}
         <text x={x(day)} y={y(current.mae) - 6} fontSize={8} textAnchor="middle" fill="#ef4444" fontWeight={700}>{current.mae}</text>
       </svg>

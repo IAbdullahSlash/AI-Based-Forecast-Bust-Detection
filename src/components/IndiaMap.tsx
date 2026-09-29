@@ -81,7 +81,7 @@ export default function IndiaMap({
 
   const fillFor = (name: string) => {
     const data = info[name];
-    if (!data) return '#cbd5e1';
+    if (!data) return 'var(--map-unanalysed)';
     return mapMode === 'confidence' ? confidenceColor(data.confidence) : bustColor(data.bustProbability);
   };
   const labelColor = (name: string) => {
@@ -185,7 +185,7 @@ export default function IndiaMap({
       <div
         ref={containerRef}
         className="relative rounded-xl overflow-hidden border border-sky-100"
-        style={{ background: 'radial-gradient(ellipse at 50% 40%, #f0f9ff 0%, #e0f2fe 60%, #dbeafe 100%)' }}
+        style={{ background: 'var(--map-ocean)', borderColor: 'var(--map-ocean-border)' }}
       >
         <svg
           ref={svgRef}
@@ -201,7 +201,7 @@ export default function IndiaMap({
         >
           <defs>
             <pattern id="ocean-dots" width="14" height="14" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="0.8" fill="#bae6fd" />
+              <circle cx="1" cy="1" r="0.8" style={{ fill: 'var(--map-dot)' }} />
             </pattern>
           </defs>
           <rect width={WIDTH} height={HEIGHT} fill="url(#ocean-dots)" opacity={0.7} />
@@ -209,13 +209,13 @@ export default function IndiaMap({
           <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
             {MAP.seas.map((sea) => (
               <text key={sea.text} x={sea.at[0]} y={sea.at[1]} textAnchor="middle" fontSize={11} fontStyle="italic"
-                fill="#7dd3fc" letterSpacing={2} pointerEvents="none">
+                style={{ fill: 'var(--map-sea-label)' }} letterSpacing={2} pointerEvents="none">
                 {sea.text.toUpperCase()}
               </text>
             ))}
 
             {/* Offset copy as a shadow; SVG filters here broke page painting in Chromium. */}
-            <g transform="translate(1.5 3)" fill="#0f172a" opacity={0.1} pointerEvents="none">
+            <g transform="translate(1.5 3)" style={{ fill: 'var(--map-shadow)' }} opacity={0.12} pointerEvents="none">
               {MAP.states.map((state) => <path key={`shadow-${state.name}`} d={state.d} />)}
             </g>
 
@@ -228,10 +228,11 @@ export default function IndiaMap({
                     key={state.name}
                     d={state.d}
                     fill={fillFor(state.name)}
-                    stroke={isSelected ? '#0f172a' : '#ffffff'}
+                    
                     strokeWidth={(isSelected ? 2.2 : isHovered ? 1.6 : 0.7) / view.k}
                     strokeLinejoin="round"
                     style={{
+                      stroke: isSelected ? 'var(--map-selected)' : 'var(--map-edge)',
                       transition: 'fill 350ms ease, filter 150ms ease',
                       filter: isHovered && state.analysed ? 'brightness(1.08) saturate(1.1)' : undefined,
                       cursor: state.analysed ? 'pointer' : 'default',
@@ -244,7 +245,7 @@ export default function IndiaMap({
             </g>
 
             {MAP.states.filter((state) => state.tiny).map((state) => (
-              <circle key={`dot-${state.name}`} cx={state.x} cy={state.y} r={2 / view.k} fill="#94a3b8" stroke="#fff" strokeWidth={0.5 / view.k} pointerEvents="none" />
+              <circle key={`dot-${state.name}`} cx={state.x} cy={state.y} r={2 / view.k} fill="#94a3b8" style={{ stroke: 'var(--map-edge)' }} strokeWidth={0.5 / view.k} pointerEvents="none" />
             ))}
 
             {MAP.states.filter((state) => state.analysed).map((state) => {
@@ -258,9 +259,8 @@ export default function IndiaMap({
                   textAnchor="middle"
                   fontSize={(small ? 6.5 : 9) / Math.sqrt(view.k)}
                   fontWeight={700}
-                  fill={small ? '#334155' : labelColor(state.name)}
+                  style={{ fill: small ? 'var(--map-small-label)' : labelColor(state.name), transition: 'fill 350ms ease' }}
                   pointerEvents="none"
-                  style={{ transition: 'fill 350ms ease' }}
                 >
                   {ABBREVIATIONS[state.name]}
                 </text>

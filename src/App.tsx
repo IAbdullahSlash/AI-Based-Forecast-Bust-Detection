@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Clock, CloudRain, Wind, Thermometer, Gauge, MapPin, Zap, ChevronDown, Layers, Radio, Activity,
   ThermometerIcon, Droplets, WindIcon, GaugeIcon, Satellite, ShieldCheck, ShieldAlert, ShieldQuestion,
-  ChevronLeft, ChevronRight, X, History,
+  ChevronLeft, ChevronRight, X, History, Moon, Sun,
 } from 'lucide-react';
 import { ForecastVariable, Confidence, EvaluatedVariable, ReasonItem } from './types';
 import { STATE_POSITIONS } from './data/regions';
@@ -14,7 +14,7 @@ import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
 import { DatasetStatus, fetchDatasetStatus } from './api/datasetApi';
-import { CONFIDENCE_COLORS, confidenceColor } from './theme';
+import { CONFIDENCE_COLORS, confidenceColor, setDarkMode } from './theme';
 
 const EVALUATED: ForecastVariable[] = ['rainfall', 'temperature'];
 
@@ -139,14 +139,14 @@ function ProbabilityRing({ value, color }: { value: number; color: string }) {
   const circumference = 2 * Math.PI * radius;
   return (
     <svg width="88" height="88" viewBox="0 0 88 88" className="flex-shrink-0">
-      <circle cx="44" cy="44" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="9" />
+      <circle cx="44" cy="44" r={radius} fill="none" style={{ stroke: 'var(--chart-track)' }} strokeWidth="9" />
       <circle
         cx="44" cy="44" r={radius} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
         strokeDasharray={`${(value / 100) * circumference} ${circumference}`}
         transform="rotate(-90 44 44)" style={{ transition: 'stroke-dasharray 500ms ease, stroke 300ms ease' }}
       />
-      <text x="44" y="47" textAnchor="middle" fontSize="19" fontWeight="700" fill="#0f172a">{value}%</text>
-      <text x="44" y="61" textAnchor="middle" fontSize="8" fill="#64748b">bust risk</text>
+      <text x="44" y="47" textAnchor="middle" fontSize="19" fontWeight="700" style={{ fill: 'var(--chart-ink)' }}>{value}%</text>
+      <text x="44" y="61" textAnchor="middle" fontSize="8" style={{ fill: 'var(--chart-muted)' }}>bust risk</text>
     </svg>
   );
 }
@@ -421,7 +421,20 @@ function LiveWeather({ day, variable }: { day: number; variable: EvaluatedVariab
   );
 }
 
+function initialTheme(): 'light' | 'dark' {
+  // index.html sets the class before first paint (saved choice, else system preference).
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+}
+
 export default function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme);
+  setDarkMode(theme === 'dark');
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.classList.toggle('dark', next === 'dark');
+    try { localStorage.setItem('theme', next); } catch { /* storage unavailable */ }
+    setTheme(next);
+  };
   const [day, setDay] = useState(5);
   const [variable, setVariable] = useState<EvaluatedVariable>('rainfall');
   const [mapMode, setMapMode] = useState<'confidence' | 'bust'>('confidence');
@@ -453,6 +466,7 @@ export default function App() {
             <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-400/10 border border-amber-300/30 text-amber-200 flex items-center gap-1.5">
               <Activity size={12} /> Demo data
             </span>
+
           </div>
         </div>
       </header>
@@ -494,6 +508,15 @@ export default function App() {
             </div>
             <button onClick={() => setDay(Math.min(10, day + 1))} aria-label="Next day" className="p-1 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={day === 10}><ChevronRight size={15} /></button>
           </div>
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 text-xs font-medium transition-colors"
+          >
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </button>
         </div>
       </div>
 
