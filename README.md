@@ -2,6 +2,10 @@
 
 > Current prototype scope: a deterministic rainfall MVP. It aligns local forecast/observation pairs, calculates error metrics and a P90 bust threshold, retrieves similar cases, and derives a transparent probability. The local data is synthetic and must be replaced with archived NWP plus matching observations before operational use.
 
+## Gemini evidence briefings
+
+The Gemini key is read only by `server.mjs`; never rename it to a `VITE_` variable. Run the API/server with `npm run server`, then use the **Generate** button in the dashboard. For local development, also run `npm run dev` in a second terminal; Vite proxies `/api` to the server. The default model is `gemini-3.5-flash`; override it with `GEMINI_MODEL` in `.env` only if your Gemini account requires another available model.
+
 A real-time dashboard for monitoring **forecast confidence** and **bust probability** across Indian states — built with React, TypeScript, Tailwind CSS, and Vite.
 
 ---

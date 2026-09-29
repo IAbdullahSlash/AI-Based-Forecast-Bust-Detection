@@ -11,6 +11,7 @@ import {
 } from './analysis/forecastEngine';
 import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
+import { generateGeminiBriefing } from './api/geminiApi';
 
 const VARIABLES: { key: ForecastVariable; label: string; icon: React.ReactNode }[] = [
   { key: 'rainfall', label: 'Rainfall', icon: <CloudRain size={15} /> },
@@ -288,11 +289,42 @@ function HistoricalAnalogues({ region, day }: { region: string; day: number }) {
 }
 
 function AIExplanation({ region, day }: { region: string; day: number }) {
-  const explanation = getExplanation(region, day);
+  const fallbackExplanation = getExplanation(region, day);
+  const [briefing, setBriefing] = useState<{ key: string; text: string } | null>(null);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const key = `${region}-${day}`;
+  const visibleBriefing = briefing?.key === key ? briefing.text : null;
+
+  const generateBriefing = async () => {
+    setIsGenerating(true);
+    setBriefingError(null);
+    try {
+      const result = getRegionData(region, day);
+      const analogues = getAnalogueData(region, day);
+      const text = await generateGeminiBriefing({ region, day, result, analogues });
+      setBriefing({ key, text });
+    } catch (error) {
+      setBriefingError(error instanceof Error ? error.message : 'Unable to generate a Gemini briefing.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="card p-3 border-blue-100">
-      <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Zap size={15} className="text-blue-500" /> Why is forecast confidence low?</h3>
-      <p className="text-xs text-slate-600 leading-relaxed mb-2">{explanation}</p>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Zap size={15} className="text-blue-500" /> Gemini evidence briefing</h3>
+        <button
+          onClick={generateBriefing}
+          disabled={isGenerating}
+          className="px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-60"
+        >
+          {isGenerating ? 'Generating…' : visibleBriefing ? 'Regenerate' : 'Generate'}
+        </button>
+      </div>
+      <p className="text-xs text-slate-600 leading-relaxed mb-2">{visibleBriefing || fallbackExplanation}</p>
+      {briefingError && <p className="text-[10px] text-red-600 mb-2">{briefingError}</p>}
       <div className="flex flex-wrap gap-1">
         {['Paired local records', 'P90 bust threshold', 'Analogue similarity', 'Historical MAE', 'Forecast intensity'].map((tag) => (
           <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-medium">{tag}</span>
