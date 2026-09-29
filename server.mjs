@@ -102,9 +102,12 @@ async function generateExplanation(evidence) {
       },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: createPrompt(evidence) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 260 },
+        // Gemini 3 models "think" before answering and those tokens count
+        // against maxOutputTokens, so the budget must cover both. Length is
+        // controlled by the prompt (85–125 words), not by this cap.
+        generationConfig: { temperature: 0.2, maxOutputTokens: 2048, thinkingConfig: { thinkingLevel: 'low' } },
       }),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(30_000),
     },
   );
 
@@ -115,10 +118,17 @@ async function generateExplanation(evidence) {
     throw error;
   }
 
-  const text = payload?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || '')
+  const candidate = payload?.candidates?.[0];
+  const text = candidate?.content?.parts
+    ?.filter((part) => !part.thought)
+    .map((part) => part.text || '')
     .join('')
     .trim();
+  if (candidate?.finishReason === 'MAX_TOKENS') {
+    const error = new Error('Gemini ran out of output tokens before finishing the briefing.');
+    error.status = 502;
+    throw error;
+  }
   if (!text) {
     const error = new Error('Gemini returned no text for this request.');
     error.status = 502;
