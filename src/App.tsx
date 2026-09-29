@@ -1,276 +1,235 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
-  Clock, CloudRain, Wind, Thermometer, Gauge, MapPin,
-  RefreshCw, Zap, AlertTriangle, ChevronDown, Sun, Cloud, Layers, Radio, Activity, CheckCircle2,
-  ThermometerIcon, Droplets, WindIcon, GaugeIcon, Satellite, CloudDrizzle, TrendingUp,
+  Clock, CloudRain, Wind, Thermometer, Gauge, MapPin, Zap, ChevronDown, Layers, Radio, Activity,
+  ThermometerIcon, Droplets, WindIcon, GaugeIcon, Satellite, ShieldCheck, ShieldAlert, ShieldQuestion,
+  ChevronLeft, ChevronRight, X, History,
 } from 'lucide-react';
 import { ForecastVariable, Confidence, EvaluatedVariable, ReasonItem } from './types';
-import { STATE_POSITIONS } from './data/mockData';
+import { STATE_POSITIONS } from './data/regions';
 import {
-  getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
+  DAYS, getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
 } from './analysis/forecastEngine';
 import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard, NwpIngestionPanel } from './components/Insights';
 import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
 import { DatasetStatus, fetchDatasetStatus } from './api/datasetApi';
+import { CONFIDENCE_COLORS, confidenceColor } from './theme';
 
 const EVALUATED: ForecastVariable[] = ['rainfall', 'temperature'];
 
 const VARIABLES: { key: ForecastVariable; label: string; icon: React.ReactNode }[] = [
-  { key: 'rainfall', label: 'Rainfall', icon: <CloudRain size={15} /> },
-  { key: 'temperature', label: 'Temperature', icon: <Thermometer size={15} /> },
-  { key: 'wind', label: 'Wind', icon: <Wind size={15} /> },
-  { key: 'pressure', label: 'Pressure', icon: <Gauge size={15} /> },
+  { key: 'rainfall', label: 'Rainfall', icon: <CloudRain size={14} /> },
+  { key: 'temperature', label: 'Temperature', icon: <Thermometer size={14} /> },
+  { key: 'wind', label: 'Wind', icon: <Wind size={14} /> },
+  { key: 'pressure', label: 'Pressure', icon: <Gauge size={14} /> },
 ];
 
-const DAYS = Array.from({ length: 10 }, (_, i) => i + 1);
+const CONFIDENCE_TEXT: Record<Confidence, string> = {
+  high: 'text-emerald-600', medium: 'text-amber-600', low: 'text-rose-600',
+};
 
-function confidenceColor(conf: Confidence): string {
-  return conf === 'high' ? '#22c55e' : conf === 'medium' ? '#eab308' : '#ef4444';
-}
+const STATUS_BADGE: Record<string, string> = {
+  'Forecast Bust': 'bg-rose-100 text-rose-700',
+  'Large Error': 'bg-amber-100 text-amber-700',
+  Normal: 'bg-emerald-100 text-emerald-700',
+};
 
-function confidenceBg(conf: Confidence): string {
-  return conf === 'high' ? 'bg-green-100 text-green-800' : conf === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
-}
-
-function bustColor(prob: number): string {
-  if (prob < 40) return '#3b82f6';
-  if (prob < 60) return '#eab308';
-  return '#ef4444';
-}
-
-function bustBg(prob: number): string {
-  if (prob < 40) return 'bg-blue-100 text-blue-800';
-  if (prob < 60) return 'bg-yellow-100 text-yellow-800';
-  return 'bg-red-100 text-red-800';
-}
-
-function mapColor(mode: string, conf: Confidence, prob: number): string {
-  if (mode === 'confidence') return confidenceColor(conf);
-  return bustColor(prob);
-}
+const REASON_STYLES: Record<ReasonItem['kind'], { label: string; className: string }> = {
+  system: { label: 'System', className: 'bg-indigo-100 text-indigo-700' },
+  dynamics: { label: 'Dynamics', className: 'bg-orange-100 text-orange-700' },
+  intensity: { label: 'Intensity', className: 'bg-rose-100 text-rose-700' },
+  lead: { label: 'Lead time', className: 'bg-slate-200 text-slate-700' },
+  analogue: { label: 'Analogues', className: 'bg-sky-100 text-sky-700' },
+  model: { label: 'ML model', className: 'bg-violet-100 text-violet-700' },
+  history: { label: 'History', className: 'bg-slate-200 text-slate-700' },
+};
 
 function getConfidence(day: number, region: string, variable: EvaluatedVariable): Confidence {
   return getConfidenceByDay(variable)[day]?.[region]?.confidence || 'medium';
 }
 
-function getBustProb(day: number, region: string, variable: EvaluatedVariable): number {
-  return getConfidenceByDay(variable)[day]?.[region]?.bustProbability ?? 0;
+function SectionTitle({ icon, children, aside }: { icon?: React.ReactNode; children: React.ReactNode; aside?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-3">
+      <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">{icon}{children}</h3>
+      {aside}
+    </div>
+  );
 }
 
-const REASON_STYLES: Record<ReasonItem['kind'], { label: string; className: string }> = {
-  system: { label: 'System', className: 'bg-indigo-100 text-indigo-700' },
-  dynamics: { label: 'Dynamics', className: 'bg-orange-100 text-orange-700' },
-  intensity: { label: 'Intensity', className: 'bg-red-100 text-red-700' },
-  lead: { label: 'Lead time', className: 'bg-slate-200 text-slate-700' },
-  analogue: { label: 'Analogues', className: 'bg-blue-100 text-blue-700' },
-  model: { label: 'ML model', className: 'bg-purple-100 text-purple-700' },
-  history: { label: 'History', className: 'bg-slate-200 text-slate-700' },
-};
-
 function SummaryCards({ day, variable }: { day: number; variable: EvaluatedVariable }) {
-  const summary = useMemo(() => {
-    const stats = getSummaryStats(day, variable);
-    return { total: stats.regionsAnalyzed, high: stats.highConfidence, med: stats.mediumConfidence, low: stats.lowConfidence };
-  }, [day, variable]);
-
+  const stats = useMemo(() => getSummaryStats(day, variable), [day, variable]);
+  const cards = [
+    { label: 'Regions analysed', value: stats.regionsAnalyzed, sub: `Day ${day} forecast`, icon: <MapPin size={18} />, tint: 'bg-sky-50 text-sky-600', bar: null },
+    { label: 'High confidence', value: stats.highConfidence, sub: 'Bust probability < 20%', icon: <ShieldCheck size={18} />, tint: 'bg-emerald-50 text-emerald-600', bar: CONFIDENCE_COLORS.high },
+    { label: 'Medium confidence', value: stats.mediumConfidence, sub: '20–40%', icon: <ShieldQuestion size={18} />, tint: 'bg-amber-50 text-amber-600', bar: CONFIDENCE_COLORS.medium },
+    { label: 'Low confidence', value: stats.lowConfidence, sub: 'Bust probability ≥ 40%', icon: <ShieldAlert size={18} />, tint: 'bg-rose-50 text-rose-600', bar: CONFIDENCE_COLORS.low },
+  ];
   return (
-    <div className="grid grid-cols-4 gap-3">
-      {[
-        { label: 'Regions Analyzed', value: summary.total, sub: 'across India', icon: <MapPin size={18} />, color: 'text-slate-600', bg: 'bg-slate-100' },
-        { label: 'High Confidence', value: summary.high, sub: `${Math.round(summary.high / summary.total * 100)}%`, icon: <CheckCircle2 size={18} />, color: 'text-green-600', bg: 'bg-green-100' },
-        { label: 'Medium Confidence', value: summary.med, sub: `${Math.round(summary.med / summary.total * 100)}%`, icon: <Activity size={18} />, color: 'text-yellow-600', bg: 'bg-yellow-100' },
-        { label: 'Low Confidence', value: summary.low, sub: `${Math.round(summary.low / summary.total * 100)}%`, icon: <AlertTriangle size={18} />, color: 'text-red-600', bg: 'bg-red-100' },
-      ].map((c) => (
-        <div key={c.label} className="card p-3 flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-lg ${c.bg} flex items-center justify-center flex-shrink-0`}>{c.icon}</div>
-          <div>
-            <div className="text-2xl font-bold text-slate-900 leading-none">{c.value}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{c.label}</div>
-            <div className={`text-xs font-medium ${c.color}`}>{c.sub}</div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {cards.map((card) => (
+        <div key={card.label} className="card p-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-xs font-medium text-slate-500">{card.label}</div>
+              <div className="text-3xl font-semibold text-slate-900 mt-1 tabular-nums">{card.value}</div>
+            </div>
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${card.tint}`}>{card.icon}</div>
           </div>
+          {card.bar ? (
+            <div className="mt-3">
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(card.value / stats.regionsAnalyzed) * 100}%`, backgroundColor: card.bar }} />
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1.5">{card.sub}</div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-500 mt-3 pt-1.5">{card.sub}</div>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
+/** Day 1–10 strip: each day shows the share of regions at each confidence level. */
 function ForecastTimeline({ day, setDay, variable }: { day: number; setDay: (d: number) => void; variable: EvaluatedVariable }) {
   return (
-    <div className="card p-3">
-      <div className="flex items-center gap-2 mb-2">
-        <Clock size={15} className="text-slate-500" />
-        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Forecast Timeline</span>
-      </div>
-      <div className="flex items-center gap-1">
+    <div className="card p-4">
+      <SectionTitle
+        icon={<Clock size={15} className="text-slate-400" />}
+        aside={<span className="text-[11px] text-slate-500">Share of regions by confidence · click a day</span>}
+      >
+        Confidence by lead time
+      </SectionTitle>
+      <div className="overflow-x-auto -mx-1 px-1"><div className="grid grid-cols-10 gap-1.5 min-w-[640px]">
         {DAYS.map((d) => {
           const stats = getSummaryStats(d, variable);
-          const risk = stats.lowConfidence * 2 + stats.mediumConfidence;
-          const conf: Confidence = risk >= 10 ? 'low' : risk >= 5 ? 'medium' : 'high';
-          const col = confidenceColor(conf);
+          const total = stats.regionsAnalyzed;
+          const selected = d === day;
           return (
             <button
               key={d}
               onClick={() => setDay(d)}
-              className={`flex-1 flex flex-col items-center py-1.5 rounded-lg text-xs font-medium transition-all ${day === d ? 'ring-2 ring-blue-500 ring-offset-1 bg-blue-50' : 'hover:bg-slate-50'}`}
+              className={`group rounded-lg p-1.5 text-left transition-all ${selected ? 'bg-slate-900 shadow-md' : 'hover:bg-slate-100'}`}
             >
-              <span className="text-[10px] text-slate-500 mb-1">Day {d}</span>
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: col }} />
-              <span className="text-[9px] text-slate-400 mt-0.5">{stats.lowConfidence} low</span>
+              <div className={`text-[11px] font-semibold mb-1.5 ${selected ? 'text-white' : 'text-slate-600'}`}>Day {d}</div>
+              <div className="flex h-8 rounded overflow-hidden">
+                {(['high', 'medium', 'low'] as const).map((level) => {
+                  const count = level === 'high' ? stats.highConfidence : level === 'medium' ? stats.mediumConfidence : stats.lowConfidence;
+                  return count ? (
+                    <div key={level} style={{ width: `${(count / total) * 100}%`, backgroundColor: CONFIDENCE_COLORS[level] }} className="transition-all duration-500" />
+                  ) : null;
+                })}
+              </div>
+              <div className={`text-[10px] mt-1 ${selected ? 'text-slate-300' : 'text-slate-500'}`}>
+                {stats.lowConfidence ? <span className={selected ? 'text-rose-300' : 'text-rose-600'}>{stats.lowConfidence} low</span> : 'none low'}
+              </div>
             </button>
           );
         })}
-      </div>
+      </div></div>
     </div>
   );
 }
 
-function MapLegend({ mapMode }: { mapMode: string }) {
-  if (mapMode === 'confidence') {
-    return (
-      <div className="flex items-center gap-4 text-xs">
-        <span className="font-medium text-slate-600">Confidence:</span>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500" /> <span className="text-slate-600">High</span></div>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-500" /> <span className="text-slate-600">Medium</span></div>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500" /> <span className="text-slate-600">Low</span></div>
-      </div>
-    );
-  }
+function ProbabilityRing({ value, color }: { value: number; color: string }) {
+  const radius = 34;
+  const circumference = 2 * Math.PI * radius;
   return (
-    <div className="flex items-center gap-4 text-xs">
-      <span className="font-medium text-slate-600">Bust Probability:</span>
-      <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-500" /> <span className="text-slate-600">Low</span></div>
-      <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-500" /> <span className="text-slate-600">Medium</span></div>
-      <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500" /> <span className="text-slate-600">High</span></div>
-    </div>
-  );
-}
-
-function ConfidenceGauge({ value, label, color }: { value: number; label: string; color: string }) {
-  const angle = (value / 100) * 180;
-  const rad = (angle * Math.PI) / 180;
-  const x = 50 + 40 * Math.cos(rad - Math.PI / 2);
-  const y = 50 + 40 * Math.sin(rad - Math.PI / 2);
-  const largeArc = angle > 180 ? 1 : 0;
-
-  return (
-    <div className="flex flex-col items-center">
-      <svg width="100" height="60" viewBox="0 0 100 60">
-        <path d="M10,55 A40,40 0 0,1 90,55" fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round" />
-        <path d="M10,55 A40,40 0 0,1 90,55" fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${value * 0.8} 80`} />
-        <circle cx={x} cy={y} r="4" fill={color} />
-      </svg>
-      <div className="text-center mt-1">
-        <div className="text-xl font-bold" style={{ color }}>{value}%</div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</div>
-      </div>
-    </div>
+    <svg width="88" height="88" viewBox="0 0 88 88" className="flex-shrink-0">
+      <circle cx="44" cy="44" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="9" />
+      <circle
+        cx="44" cy="44" r={radius} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
+        strokeDasharray={`${(value / 100) * circumference} ${circumference}`}
+        transform="rotate(-90 44 44)" style={{ transition: 'stroke-dasharray 500ms ease, stroke 300ms ease' }}
+      />
+      <text x="44" y="47" textAnchor="middle" fontSize="19" fontWeight="700" fill="#0f172a">{value}%</text>
+      <text x="44" y="61" textAnchor="middle" fontSize="8" fill="#64748b">bust risk</text>
+    </svg>
   );
 }
 
 function RegionDetailPanel({ region, day, variable, onClose }: { region: string; day: number; variable: EvaluatedVariable; onClose: () => void }) {
   const data = getRegionData(region, day, variable);
   const analogues = getAnalogueData(region, day, variable);
-  const explanation = getExplanation(region, day, variable);
 
   return (
-    <div className="card p-4 w-80 flex-shrink-0 border-l-2 border-blue-200 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="text-base font-bold text-slate-900">{region}</h3>
-          <div className="text-[11px] text-slate-500">Day {day} · {variable.charAt(0).toUpperCase() + variable.slice(1)}</div>
-        </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
-      </div>
-
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-slate-500">Bust Probability</span>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bustBg(data.bustProbability)}`}>{data.bustProbability}%</span>
-        </div>
-        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${data.bustProbability}%`, backgroundColor: bustColor(data.bustProbability) }} />
-        </div>
-        <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-          <span>ML model {data.mlProbability}%</span>
-          <span>Analogues {data.analogueProbability}%</span>
-          <span>Bust ≥ {data.bustThreshold} {data.unit}</span>
-        </div>
-        {data.fingerprint.systemName && (
-          <div className="mt-2 text-[11px] bg-indigo-50 text-indigo-800 rounded-md px-2 py-1">
-            {data.fingerprint.systemName}
+    <div className="card flex flex-col overflow-hidden lg:max-h-[calc(100vh-150px)] lg:sticky lg:top-[88px]">
+      <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-medium text-slate-500">Day {day} · {variable === 'rainfall' ? 'Rainfall' : 'Temperature'}</div>
+            <h3 className="text-lg font-semibold text-slate-900 leading-tight">{region}</h3>
           </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        <div className="bg-slate-50 rounded-lg p-2">
-          <div className="text-[10px] text-slate-500 uppercase">Forecast</div>
-          <div className="text-lg font-bold text-slate-900">{data.forecastValue} <span className="text-xs font-normal text-slate-500">{data.unit}</span></div>
+          <button onClick={onClose} aria-label="Close region details" className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+            <X size={16} />
+          </button>
         </div>
-        <div className="bg-slate-50 rounded-lg p-2">
-          <div className="text-[10px] text-slate-500 uppercase">Confidence</div>
-          <div className={`text-lg font-bold ${data.confidence === 'high' ? 'text-green-600' : data.confidence === 'medium' ? 'text-yellow-600' : 'text-red-600'}`}>{data.confidence.toUpperCase()}</div>
-        </div>
-        <div className="bg-slate-50 rounded-lg p-2">
-          <div className="text-[10px] text-slate-500 uppercase">MAE at Day {day}</div>
-          <div className="text-lg font-bold text-slate-900">{data.historicalMeanError} <span className="text-xs font-normal text-slate-500">{data.unit}</span></div>
-        </div>
-        <div className="bg-slate-50 rounded-lg p-2">
-          <div className="text-[10px] text-slate-500 uppercase">Bust Freq (Day {day})</div>
-          <div className="text-lg font-bold text-slate-900">{data.historicalBustFrequency}%</div>
+        <div className="flex items-center gap-4 mt-3">
+          <ProbabilityRing value={data.bustProbability} color={confidenceColor(data.confidence)} />
+          <div className="flex-1 min-w-0">
+            <div className={`text-sm font-semibold ${CONFIDENCE_TEXT[data.confidence]}`}>{data.confidence.toUpperCase()} confidence</div>
+            {data.fingerprint.systemName && (
+              <div className="text-xs text-indigo-700 bg-indigo-50 rounded-md px-2 py-1 mt-1.5 leading-snug">{data.fingerprint.systemName}</div>
+            )}
+            <div className="grid grid-cols-2 gap-x-3 text-[11px] text-slate-500 mt-2">
+              <span>ML model <b className="text-slate-800">{data.mlProbability}%</b></span>
+              <span>Analogues <b className="text-slate-800">{data.analogueProbability}%</b></span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="mb-4">
-        <LeadErrorChart region={region} variable={variable} day={day} />
-      </div>
-
-      <div className="mb-4">
-        <h4 className="text-xs font-semibold text-slate-700 mb-2">Why confidence is {data.confidence}: key meteorological reasons</h4>
-        <ul className="space-y-1.5">
-          {data.reasons.map((r, i) => (
-            <li key={i} className="text-xs text-slate-600 leading-snug">
-              <span className={`inline-block px-1.5 rounded text-[9px] font-semibold mr-1 ${REASON_STYLES[r.kind].className}`}>{REASON_STYLES[r.kind].label}</span>
-              {r.text}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-slate-700">Similar Cases</span>
-          <span className="text-[11px] text-slate-500">{data.similarCases} same-regime · {data.casesWithLargeError}/{analogues.length} closest large error</span>
-        </div>
-        <ConfidenceGauge value={data.historicalBustFrequency} label={`Historical bust rate at Day ${day}`} color={bustColor(data.historicalBustFrequency)} />
-      </div>
-
-      <div className="mb-4">
-        <h4 className="text-xs font-semibold text-slate-700 mb-2">Historical Analogues</h4>
-        <div className="space-y-2">
-          {analogues.slice(0, 5).map((a, i) => (
-            <div key={i} className="bg-slate-50 rounded-lg p-2 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-medium text-slate-800">{a.eventType}</span>
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${a.bustStatus === 'Forecast Bust' ? 'bg-red-100 text-red-700' : a.bustStatus === 'Large Error' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                  {a.bustStatus}
-                </span>
-              </div>
-              <div className="text-slate-500">{a.region} · {a.date} · Day {a.leadDays} lead</div>
-              <div className="flex justify-between text-slate-500 mt-0.5">
-                <span>Similarity: {a.similarity}%</span>
-                <span>Error: {a.forecastError} {data.unit}</span>
-              </div>
+      <div className="overflow-y-auto px-4 py-3 space-y-4">
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Forecast', value: data.forecastValue, unit: data.unit },
+            { label: `MAE · D${day}`, value: data.historicalMeanError, unit: data.unit },
+            { label: 'Bust if error ≥', value: data.bustThreshold, unit: data.unit },
+          ].map((item) => (
+            <div key={item.label} className="bg-slate-50 rounded-lg px-2.5 py-2">
+              <div className="text-[10px] font-medium text-slate-500">{item.label}</div>
+              <div className="text-base font-semibold text-slate-900 tabular-nums">{item.value}<span className="text-[11px] font-normal text-slate-500 ml-0.5">{item.unit}</span></div>
             </div>
           ))}
         </div>
-      </div>
 
-      <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-        <h4 className="text-xs font-bold text-blue-900 flex items-center gap-1.5 mb-1"><Zap size={12} /> AI Explanation</h4>
-        <p className="text-[11px] text-blue-800 leading-relaxed">{explanation}</p>
+        <LeadErrorChart region={region} variable={variable} day={day} />
+
+        <div>
+          <h4 className="text-xs font-semibold text-slate-800 mb-2">Why confidence is {data.confidence}</h4>
+          <ul className="space-y-2">
+            {data.reasons.map((reason, i) => (
+              <li key={i} className="text-xs text-slate-600 leading-relaxed flex gap-2">
+                <span className={`h-fit flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold ${REASON_STYLES[reason.kind].className}`}>{REASON_STYLES[reason.kind].label}</span>
+                <span>{reason.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold text-slate-800">Closest historical analogues</h4>
+            <span className="text-[10px] text-slate-500">Bust rate at D{day}: {data.historicalBustFrequency}%</span>
+          </div>
+          <div className="space-y-1.5">
+            {analogues.slice(0, 5).map((a, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-slate-800 truncate">{a.eventType}</div>
+                  <div className="text-[10px] text-slate-500">{a.region} · {a.date} · D{a.leadDays} · error {a.forecastError} {data.unit}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] font-semibold text-slate-700 tabular-nums">{a.similarity}%</div>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${STATUS_BADGE[a.bustStatus]}`}>{a.bustStatus}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -279,22 +238,22 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
 function HistoricalAnalogues({ region, day, variable }: { region: string; day: number; variable: EvaluatedVariable }) {
   const analogues = getAnalogueData(region, day, variable);
   return (
-    <div className="card p-3">
-      <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Clock size={15} /> Historical Analogues</h3>
-      <div className="space-y-2">
+    <div className="card p-4">
+      <SectionTitle icon={<History size={15} className="text-sky-500" />} aside={<span className="text-[11px] text-slate-500">{region} · D{day}</span>}>
+        Historical analogues
+      </SectionTitle>
+      <div className="space-y-1.5">
         {analogues.slice(0, 5).map((a, i) => (
-          <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-lg p-2 text-xs">
-            <div className="flex-1">
+          <div key={i} className="flex items-center gap-3 rounded-lg bg-slate-50 px-2.5 py-2 text-xs">
+            <div className="flex-1 min-w-0">
               <div className="font-medium text-slate-800">{a.eventType}</div>
-              <div className="text-slate-500">{a.region} · {a.date} · D{a.leadDays}</div>
+              <div className="text-[10px] text-slate-500">{a.region} · {a.date} · D{a.leadDays}</div>
             </div>
-            <div className="text-center flex-shrink-0">
-              <div className="font-bold text-slate-800">{a.similarity}%</div>
-              <div className="text-[9px] text-slate-500">sim.</div>
+            <div className="text-center">
+              <div className="font-semibold text-slate-800 tabular-nums">{a.similarity}%</div>
+              <div className="text-[9px] text-slate-500">similar</div>
             </div>
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${a.bustStatus === 'Forecast Bust' ? 'bg-red-100 text-red-700' : a.bustStatus === 'Large Error' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-              {a.bustStatus}
-            </span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_BADGE[a.bustStatus]}`}>{a.bustStatus}</span>
           </div>
         ))}
       </div>
@@ -326,22 +285,26 @@ function AIExplanation({ region, day, variable }: { region: string; day: number;
   };
 
   return (
-    <div className="card p-3 border-blue-100">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Zap size={15} className="text-blue-500" /> Gemini evidence briefing</h3>
-        <button
-          onClick={generateBriefing}
-          disabled={isGenerating}
-          className="px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-60"
-        >
-          {isGenerating ? 'Generating…' : visibleBriefing ? 'Regenerate' : 'Generate'}
-        </button>
-      </div>
-      <p className="text-xs text-slate-600 leading-relaxed mb-2">{visibleBriefing || fallbackExplanation}</p>
-      {briefingError && <p className="text-[10px] text-red-600 mb-2">{briefingError}</p>}
+    <div className="card p-4 bg-gradient-to-br from-white to-sky-50/60">
+      <SectionTitle
+        icon={<Zap size={15} className="text-sky-500" />}
+        aside={(
+          <button
+            onClick={generateBriefing}
+            disabled={isGenerating}
+            className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-700 disabled:opacity-60 transition-colors"
+          >
+            {isGenerating ? 'Generating…' : visibleBriefing ? 'Regenerate' : 'Generate with Gemini'}
+          </button>
+        )}
+      >
+        Analyst briefing
+      </SectionTitle>
+      <p className="text-xs text-slate-600 leading-relaxed mb-3">{visibleBriefing || fallbackExplanation}</p>
+      {briefingError && <p className="text-[11px] text-rose-600 mb-2">{briefingError}</p>}
       <div className="flex flex-wrap gap-1">
-        {['Hindcast pairs', 'P90 bust threshold', 'Logistic model', 'k-NN analogues', 'Rule-based met reasons'].map((tag) => (
-          <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-medium">{tag}</span>
+        {['Hindcast pairs', 'P90 bust threshold', 'Logistic model', 'k-NN analogues', 'Rule-based reasons'].map((tag) => (
+          <span key={tag} className="px-2 py-0.5 bg-white border border-sky-100 text-sky-700 rounded-full text-[10px] font-medium">{tag}</span>
         ))}
       </div>
     </div>
@@ -349,38 +312,35 @@ function AIExplanation({ region, day, variable }: { region: string; day: number;
 }
 
 function DataSources() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
 
   useEffect(() => {
     fetchDatasetStatus().then(setDataset).catch(() => setDataset(null));
   }, []);
 
-  const forecastStatus = dataset?.available
-    ? `${dataset.fileCount} NetCDF files`
-    : 'No local files found';
+  const forecastStatus = dataset?.available ? `${dataset.fileCount} NetCDF files` : 'Server offline or no files';
   const coverageStatus = dataset?.available
-    ? `${dataset.initializations.length} initializations, Day ${dataset.forecastDays[0]}–${dataset.forecastDays[dataset.forecastDays.length - 1]}`
+    ? `${dataset.initializations.length} initializations, day${String(dataset.forecastDays[0]).padStart(2, '0')}–${String(dataset.forecastDays[dataset.forecastDays.length - 1]).padStart(2, '0')}`
     : 'Pending';
   return (
     <div className="card overflow-hidden">
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-        <span className="flex items-center gap-2"><Layers size={15} /> Data Sources</span>
-        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-4 text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors">
+        <span className="flex items-center gap-2"><Layers size={15} className="text-slate-400" /> Data sources</span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="px-3 pb-3 space-y-1.5">
+        <div className="px-4 pb-4 space-y-1.5">
           {[
-            { name: 'NWP rainfall forecast files', status: forecastStatus, icon: <CloudRain size={12} /> },
-            { name: 'Forecast coverage', status: coverageStatus, icon: <Clock size={12} /> },
-            { name: 'Hindcast archive (synthetic)', status: '6,000 pairs · 2016–2023 · D1–10', icon: <Clock size={12} /> },
-            { name: 'Current forecast scenario', status: 'Synthetic, 10 Jun 2026', icon: <Activity size={12} /> },
-            { name: 'Observed rainfall archive', status: dataset?.observationDataAvailable ? 'Available' : 'Required for real evaluation', icon: <Activity size={12} /> },
-            { name: 'State/grid aggregation', status: 'Next ingestion step', icon: <MapPin size={12} /> },
-          ].map((s) => (
-            <div key={s.name} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs">
-              <span className="font-medium text-slate-700 flex items-center gap-2">{s.icon} {s.name}</span>
-              <span className="text-slate-400 text-[10px]">{s.status}</span>
+            { name: 'NCMRWF NWP rainfall files', status: forecastStatus },
+            { name: 'Forecast coverage', status: coverageStatus },
+            { name: 'Hindcast archive (synthetic)', status: '6,000 pairs · 2016–2023' },
+            { name: 'Current forecast scenario', status: 'Synthetic · 10 Jun 2026' },
+            { name: 'Observed rainfall archive', status: dataset?.observationDataAvailable ? 'Available' : 'Needed for real verification' },
+          ].map((source) => (
+            <div key={source.name} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 text-xs">
+              <span className="font-medium text-slate-700">{source.name}</span>
+              <span className="text-slate-500 text-[11px] text-right">{source.status}</span>
             </div>
           ))}
         </div>
@@ -391,23 +351,72 @@ function DataSources() {
 
 function SystemStatus() {
   const items = [
-    { name: 'Forecast / observation alignment', status: 'Ready' },
-    { name: 'k-NN analogue engine', status: 'Ready' },
-    { name: 'Logistic bust model (trained in-app)', status: 'Ready' },
-    { name: 'Rule-based meteorological explainer', status: 'Ready' },
-    { name: 'JSON API (/api/confidence, /api/region, /api/error-prone)', status: 'Ready' },
+    'Forecast / observation alignment',
+    'k-NN analogue engine',
+    'Logistic bust model (trained in-app)',
+    'Rule-based meteorological explainer',
+    'JSON API (/api/confidence, /api/region, …)',
   ];
   return (
-    <div className="card p-3">
-      <h3 className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-2"><Radio size={12} /> System Status</h3>
-      <div className="space-y-1.5">
+    <div className="card p-4">
+      <SectionTitle icon={<Radio size={14} className="text-slate-400" />}>System status</SectionTitle>
+      <div className="space-y-2">
         {items.map((item) => (
-          <div key={item.name} className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">{item.name}</span>
-            <span className="flex items-center gap-1 text-green-600 font-medium"><span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> {item.status}</span>
+          <div key={item} className="flex items-center justify-between text-xs">
+            <span className="text-slate-600">{item}</span>
+            <span className="flex items-center gap-1.5 text-emerald-600 font-medium"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> Ready</span>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function LiveWeather({ day, variable }: { day: number; variable: EvaluatedVariable }) {
+  const { weatherData, loading, error, refetch, lastFetchTime } = useWeatherData();
+  return (
+    <div className="card p-4">
+      <SectionTitle
+        icon={<Satellite size={15} className="text-emerald-500" />}
+        aside={(
+          <div className="flex items-center gap-2">
+            {error && <span className="text-[10px] px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full">{error}</span>}
+            {lastFetchTime && <span className="text-[10px] text-slate-400">Updated {lastFetchTime.toLocaleTimeString()}</span>}
+            <button
+              onClick={() => refetch()}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50"
+            >
+              <Satellite size={12} className={loading ? 'animate-spin' : ''} /> {loading ? 'Fetching…' : weatherData.size ? 'Refresh' : 'Fetch live weather'}
+            </button>
+          </div>
+        )}
+      >
+        Live observations (Open-Meteo, display only)
+      </SectionTitle>
+      {weatherData.size === 0 ? (
+        <p className="text-xs text-slate-500 py-3 text-center">Fetch current conditions across India. These do not feed the bust calculation.</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+          {Array.from(weatherData.entries()).slice(0, 18).map(([region, data]) => {
+            const confidence = getConfidence(day, region, variable);
+            return (
+              <div key={region} className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                <div className="text-[11px] font-semibold text-slate-700 mb-1.5 flex items-center justify-between gap-1">
+                  <span className="truncate">{region}</span>
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: confidenceColor(confidence) }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-500">
+                  <span className="flex items-center gap-1"><ThermometerIcon size={9} /> {Math.round(data.temperature)}°C</span>
+                  <span className="flex items-center gap-1"><Droplets size={9} /> {Math.round(data.rainfall)}mm</span>
+                  <span className="flex items-center gap-1"><WindIcon size={9} /> {Math.round(data.windSpeed)}km/h</span>
+                  <span className="flex items-center gap-1"><GaugeIcon size={9} /> {Math.round(data.pressure)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -418,203 +427,133 @@ export default function App() {
   const [mapMode, setMapMode] = useState<'confidence' | 'bust'>('confidence');
   const [selectedRegion, setSelectedRegion] = useState<string | null>('Odisha');
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
-  const { weatherData, loading: weatherLoading, error: weatherError, refetch: refetchWeather, lastFetchTime } = useWeatherData();
 
-  const selectedData = selectedRegion ? getRegionData(selectedRegion, day, variable) : null;
   const focusRegion = (region: string, focusDay: number) => {
     setSelectedRegion(region);
     setDay(focusDay);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-slate-900 text-white px-6 py-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
-              <CloudRain size={22} className="text-blue-400" /> AI Forecast Bust Detection
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">Forecast Confidence & Uncertainty Intelligence</p>
-          </div>
+    <div className="min-h-screen bg-slate-100/70">
+      <header className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white">
+        <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] px-2 py-0.5 bg-blue-600/30 text-blue-300 rounded-full border border-blue-500/30 flex items-center gap-1"><Radio size={8} /> Demo Mode</span>
-            <Clock size={14} className="text-slate-400" />
-            <span className="text-xs text-slate-400">{SCENARIO.label}</span>
+            <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-400/30 flex items-center justify-center">
+              <CloudRain size={20} className="text-sky-300" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">Forecast Bust Detection</h1>
+              <p className="text-xs text-slate-400">AI-based forecast confidence and uncertainty for medium-range NWP · India</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
+              <Clock size={12} /> {SCENARIO.label}
+            </span>
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-400/10 border border-amber-300/30 text-amber-200 flex items-center gap-1.5">
+              <Activity size={12} /> Demo data
+            </span>
           </div>
         </div>
       </header>
 
-      {/* Controls */}
-      <div className="bg-white border-b border-slate-200 px-6 py-2.5">
-        <div className="flex items-center gap-4 flex-wrap">
+      <div className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
+        <div className="max-w-[1600px] mx-auto px-6 py-2.5 flex items-center gap-x-6 gap-y-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">Variable:</span>
-            <div className="flex gap-1">
-              {VARIABLES.map((v) => (
-                <button
-                  key={v.key}
-                  onClick={() => EVALUATED.includes(v.key) && setVariable(v.key as EvaluatedVariable)}
-                  disabled={!EVALUATED.includes(v.key)}
-                  title={EVALUATED.includes(v.key) ? `${v.label} bust detection from paired hindcast records` : 'Pending matching historical datasets'}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60'}`}
-                >
-                  {v.icon} {v.label}
-                </button>
-              ))}
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Variable</span>
+            <div className="flex p-0.5 bg-slate-100 rounded-lg">
+              {VARIABLES.map((v) => {
+                const enabled = EVALUATED.includes(v.key);
+                return (
+                  <button
+                    key={v.key}
+                    onClick={() => enabled && setVariable(v.key as EvaluatedVariable)}
+                    disabled={!enabled}
+                    title={enabled ? `${v.label} bust detection from paired hindcast records` : 'Pending matching historical datasets'}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800 disabled:text-slate-300 disabled:cursor-not-allowed'}`}
+                  >
+                    {v.icon} {v.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <div className="w-px h-6 bg-slate-200" />
-          <button
-            onClick={() => refetchWeather()}
-            disabled={weatherLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50"
-          >
-            <Satellite size={13} className={weatherLoading ? 'animate-spin' : ''} />
-            {weatherLoading ? 'Fetching...' : 'Live Weather'}
-          </button>
-          <div className="w-px h-6 bg-slate-200" />
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">Day:</span>
-            <div className="flex gap-0.5">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Lead time</span>
+            <button onClick={() => setDay(Math.max(1, day - 1))} aria-label="Previous day" className="p-1 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={day === 1}><ChevronLeft size={15} /></button>
+            <div className="flex p-0.5 bg-slate-100 rounded-lg">
               {DAYS.map((d) => (
                 <button
                   key={d}
                   onClick={() => setDay(d)}
-                  className={`w-7 h-7 rounded-lg text-xs font-semibold transition-all ${day === d ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  className={`w-8 py-1 rounded-md text-xs font-semibold transition-all ${day === d ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
                 >
-                  {d}
+                  D{d}
                 </button>
               ))}
             </div>
+            <button onClick={() => setDay(Math.min(10, day + 1))} aria-label="Next day" className="p-1 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={day === 10}><ChevronRight size={15} /></button>
           </div>
-          <div className="w-px h-6 bg-slate-200" />
-          <button onClick={() => refetchWeather()} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-all">
-            <RefreshCw size={13} /> Refresh
-          </button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-4 space-y-3 overflow-auto">
+      <main className="max-w-[1600px] mx-auto p-4 lg:p-6 space-y-4">
         <SummaryCards day={day} variable={variable} />
         <ForecastTimeline day={day} setDay={setDay} variable={variable} />
 
-        <div className="flex gap-4" style={{ minHeight: '420px' }}>
-          {/* Map */}
-          <div className="flex-1 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <div className="lg:col-span-7 xl:col-span-8">
             <IndiaMap
-              day={day} variable={variable} mapMode={mapMode}
+              day={day} variable={variable} mapMode={mapMode} onMapModeChange={setMapMode}
               selectedRegion={selectedRegion} onSelectRegion={setSelectedRegion}
               hoveredRegion={hoveredRegion} onHoverRegion={setHoveredRegion}
             />
-            <div className="flex items-center justify-between">
-              <MapLegend mapMode={mapMode} />
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setMapMode('confidence')}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${mapMode === 'confidence' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
-                >
-                  Forecast Confidence
-                </button>
-                <button
-                  onClick={() => setMapMode('bust')}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${mapMode === 'bust' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
-                >
-                  Bust Probability
-                </button>
+          </div>
+          <div className="lg:col-span-5 xl:col-span-4">
+            {selectedRegion ? (
+              <RegionDetailPanel region={selectedRegion} day={day} variable={variable} onClose={() => setSelectedRegion(null)} />
+            ) : (
+              <div className="card flex items-center justify-center text-center py-24">
+                <div>
+                  <MapPin size={36} className="text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-600 font-medium">Select a state on the map</p>
+                  <p className="text-xs text-slate-400 mt-1">to see its bust risk and the reasons behind it</p>
+                </div>
               </div>
-            </div>
-          </div>
-
-          {/* Detail Panel */}
-          {selectedRegion && selectedData && (
-            <RegionDetailPanel region={selectedRegion} day={day} variable={variable} onClose={() => setSelectedRegion(null)} />
-          )}
-          {!selectedRegion && (
-            <div className="w-80 card flex items-center justify-center text-center">
-              <div>
-                <MapPin size={40} className="text-slate-300 mx-auto mb-3" />
-                <p className="text-sm text-slate-500 font-medium">Select a region on the map</p>
-                <p className="text-xs text-slate-400 mt-1">to view regional details</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Region x lead-time view */}
-        <div className="grid grid-cols-3 gap-3 items-start">
-          <div className="col-span-2">
-            <BustHeatmap variable={variable} day={day} region={selectedRegion} onSelect={focusRegion} />
-          </div>
-          <div className="space-y-3">
-            <ErrorProneAreas variable={variable} onSelect={focusRegion} />
-            <ActiveSystems day={day} />
-            <ModelCard variable={variable} />
-          </div>
-        </div>
-
-        {/* Bottom Section */}
-        <div className="grid grid-cols-3 gap-3">
-          <AIExplanation region={selectedRegion || 'Odisha'} day={day} variable={variable} />
-          <HistoricalAnalogues region={selectedRegion || 'Odisha'} day={day} variable={variable} />
-          <DataSources />
-        </div>
-        <NwpIngestionPanel />
-        <SystemStatus />
-
-        {/* Live Weather Panel */}
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Satellite size={16} className="text-emerald-500" /> Live Weather
-              {lastFetchTime && (
-                <span className="text-[10px] text-slate-400 font-normal">
-                  · Updated {lastFetchTime.toLocaleTimeString()}
-                </span>
-              )}
-            </h3>
-            {weatherError && (
-              <span className="text-[10px] px-2 py-0.5 bg-red-100 text-red-700 rounded-full">{weatherError}</span>
             )}
           </div>
-          {weatherData.size === 0 ? (
-            <div className="text-center py-6 text-slate-400">
-              <Satellite size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-xs">Click "Live Weather" to fetch real-time conditions across India</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-6 gap-2">
-              {Array.from(weatherData.entries()).slice(0, 18).map(([region, data]) => {
-                const col = mapColor(mapMode, getConfidence(day, region, variable), getBustProb(day, region, variable));
-                return (
-                  <div key={region} className="bg-slate-50 rounded-lg p-2.5 border border-slate-100 hover:border-slate-300 transition-all">
-                    <div className="text-[10px] font-semibold text-slate-700 mb-1.5">{region}</div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                        <ThermometerIcon size={9} /> {Math.round(data.temperature)}°C
-                      </div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                        <Droplets size={9} /> {Math.round(data.rainfall)}mm
-                      </div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                        <WindIcon size={9} /> {Math.round(data.windSpeed)}km/h
-                      </div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                        <GaugeIcon size={9} /> {Math.round(data.pressure)}hPa
-                      </div>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: col }} />
-                      <span className="text-[9px] text-slate-400">{getConfidence(day, region, variable).toUpperCase()}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <div className="lg:col-span-8">
+            <BustHeatmap variable={variable} day={day} region={selectedRegion} onSelect={focusRegion} />
+          </div>
+          <div className="lg:col-span-4 space-y-4">
+            <ErrorProneAreas variable={variable} onSelect={focusRegion} />
+            <ActiveSystems day={day} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+          <AIExplanation region={selectedRegion || 'Odisha'} day={day} variable={variable} />
+          <HistoricalAnalogues region={selectedRegion || 'Odisha'} day={day} variable={variable} />
+          <ModelCard variable={variable} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <div className="lg:col-span-8"><NwpIngestionPanel /></div>
+          <div className="lg:col-span-4 space-y-4">
+            <DataSources />
+            <SystemStatus />
+          </div>
+        </div>
+
+        <LiveWeather day={day} variable={variable} />
+
+        <footer className="text-center text-[11px] text-slate-400 py-4">
+          Prototype · probabilities come from a transparent engine (logistic model + k-NN analogues); the LLM only writes the briefing.
+        </footer>
+      </main>
     </div>
   );
 }

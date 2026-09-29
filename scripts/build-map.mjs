@@ -20,9 +20,10 @@ for (const state of states.features) {
   state.properties = { name: state.properties.st_nm };
 }
 
+// quantile(p) keeps the fraction p of points by importance.
 let output = presimplify(topology({ states }, 1e5));
-output = simplify(output, quantile(output, 0.12));
-// Drop the per-point weights that presimplify adds, then shrink precision.
+output = simplify(output, quantile(output, 0.6));
+// Drop the per-point weights that presimplify adds.
 output.arcs = output.arcs.map((arc) => arc.map(([x, y]) => [x, y]));
 const outputPath = new URL('../src/data/indiaStates.topo.json', import.meta.url);
 writeFileSync(outputPath, JSON.stringify(output));

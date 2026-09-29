@@ -25,6 +25,10 @@
 
 The server imports the same TypeScript engine as the dashboard, so it needs Node ≥ 22.18, which runs `.ts` files through type stripping.
 
+## India map
+
+State boundaries come from [udit-001/india-maps-data](https://github.com/udit-001/india-maps-data), which follows the official Indian boundary. `scripts/build-map.mjs` reduces them to a small state-level TopoJSON bundled with the app, so no map API or key is needed and the demo works offline.
+
 ## Gemini evidence briefings
 
 The Gemini key is read only by `server.mjs`; never rename it to a `VITE_` variable. Run the API/server with `npm run server`, then use the **Generate** button in the dashboard. For local development, also run `npm run dev` in a second terminal; Vite proxies `/api` to the server. The default model is `gemini-3.5-flash`; override it with `GEMINI_MODEL` in `.env` only if your Gemini account requires another available model.
