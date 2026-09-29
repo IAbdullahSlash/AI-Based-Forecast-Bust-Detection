@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchAllRegionsWeather, fetchRegionWeather, WeatherData, REGION_COORDINATES,
 } from '../api/weatherApi';
-import { STATE_POSITIONS } from '../data/mockData';
 
 interface UseWeatherDataReturn {
   weatherData: Map<string, WeatherData>;
@@ -49,10 +48,7 @@ export function useWeatherData(region?: string): UseWeatherDataReturn {
     }
   }, []);
 
-  useEffect(() => {
-    fetch(region);
-    return () => abortRef.current?.abort();
-  }, [fetch, region]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   return { weatherData, loading, error, refetch: fetch, lastFetchTime };
 }

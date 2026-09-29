@@ -1,0 +1,42 @@
+import { ForecastObservation } from '../types';
+
+// Local, deterministic sample records for the prototype. These are not IMD
+// observations and must be replaced before making operational claims.
+export const DEMO_FORECAST_OBSERVATIONS: ForecastObservation[] = [
+  ['Odisha', '2023-06-16', '2023-06-21', 5, 92, 151, 29, 38, 1001, 'Monsoon depression'],
+  ['Odisha', '2022-07-11', '2022-07-16', 5, 74, 121, 28, 34, 1003, 'Bay low'],
+  ['Odisha', '2021-08-04', '2021-08-09', 5, 108, 114, 30, 29, 1005, 'Active monsoon'],
+  ['Odisha', '2020-09-10', '2020-09-15', 5, 66, 83, 29, 25, 1007, 'Depression'],
+  ['Odisha', '2019-07-18', '2019-07-23', 5, 55, 60, 28, 22, 1008, 'Monsoon trough'],
+  ['Assam', '2023-06-05', '2023-06-10', 5, 118, 184, 27, 31, 1000, 'Monsoon depression'],
+  ['Assam', '2022-07-08', '2022-07-13', 5, 102, 156, 27, 29, 1002, 'Heavy rainfall'],
+  ['Assam', '2021-06-20', '2021-06-25', 5, 88, 111, 28, 24, 1005, 'Monsoon low'],
+  ['Assam', '2020-07-15', '2020-07-20', 5, 71, 79, 27, 20, 1007, 'Monsoon trough'],
+  ['Bihar', '2023-08-02', '2023-08-07', 5, 79, 132, 30, 25, 1003, 'Monsoon depression'],
+  ['Bihar', '2022-07-18', '2022-07-23', 5, 67, 109, 31, 21, 1005, 'Heavy rainfall'],
+  ['Bihar', '2021-08-11', '2021-08-16', 5, 64, 84, 30, 18, 1007, 'Monsoon low'],
+  ['Bihar', '2020-09-03', '2020-09-08', 5, 51, 58, 29, 15, 1009, 'Monsoon trough'],
+  ['Maharashtra', '2023-07-01', '2023-07-06', 5, 86, 154, 27, 33, 1002, 'Heavy rainfall'],
+  ['Maharashtra', '2022-08-05', '2022-08-10', 5, 72, 128, 27, 28, 1004, 'Monsoon depression'],
+  ['Maharashtra', '2021-07-14', '2021-07-19', 5, 61, 94, 28, 24, 1006, 'Monsoon low'],
+  ['Maharashtra', '2020-06-23', '2020-06-28', 5, 49, 59, 29, 18, 1008, 'Monsoon onset'],
+  ['Kerala', '2023-06-02', '2023-06-07', 5, 94, 166, 27, 36, 1001, 'Monsoon onset'],
+  ['Kerala', '2022-05-25', '2022-05-30', 5, 81, 142, 28, 32, 1003, 'Monsoon onset'],
+  ['Kerala', '2021-06-10', '2021-06-15', 5, 69, 115, 27, 26, 1005, 'Monsoon low'],
+  ['Kerala', '2020-07-08', '2020-07-13', 5, 58, 67, 27, 21, 1007, 'Active monsoon'],
+  ['Uttar Pradesh', '2023-08-07', '2023-08-12', 5, 62, 110, 31, 22, 1004, 'Monsoon depression'],
+  ['Uttar Pradesh', '2022-07-21', '2022-07-26', 5, 55, 96, 31, 19, 1006, 'Heavy rainfall'],
+  ['Uttar Pradesh', '2021-08-14', '2021-08-19', 5, 49, 68, 30, 16, 1008, 'Monsoon trough'],
+  ['Uttar Pradesh', '2020-09-09', '2020-09-14', 5, 43, 51, 29, 14, 1010, 'Weak monsoon'],
+].map(([region, forecastIssuedAt, validAt, leadDays, rainfallForecast, rainfallObserved, temperature, windSpeed, pressure, eventType]) => ({
+  region: region as string,
+  forecastIssuedAt: forecastIssuedAt as string,
+  validAt: validAt as string,
+  leadDays: leadDays as number,
+  rainfallForecast: rainfallForecast as number,
+  rainfallObserved: rainfallObserved as number,
+  temperature: temperature as number,
+  windSpeed: windSpeed as number,
+  pressure: pressure as number,
+  eventType: eventType as string,
+}));

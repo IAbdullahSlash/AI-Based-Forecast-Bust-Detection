@@ -52,3 +52,26 @@ export interface SummaryStats {
   mediumConfidence: number;
   lowConfidence: number;
 }
+
+/** A forecast paired with the observation that became available later.
+ * The demo records are deliberately local so the analytical flow works without
+ * external data access. Replace them with archived NWP + observation feeds. */
+export interface ForecastObservation {
+  region: string;
+  forecastIssuedAt: string;
+  validAt: string;
+  leadDays: number;
+  rainfallForecast: number;
+  rainfallObserved: number;
+  temperature: number;
+  windSpeed: number;
+  pressure: number;
+  eventType: string;
+}
+
+export interface ErrorMetrics {
+  mae: number;
+  rmse: number;
+  bias: number;
+  bustThreshold: number;
+}

@@ -61,7 +61,7 @@ export async function fetchRegionWeather(region: string): Promise<WeatherData | 
       'daily',
       'temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,pressure_msl_mean,relative_humidity_2m_mean'
     );
-    url.searchParams.set('timezone', 'Asia%2FKolkata');
+    url.searchParams.set('timezone', 'Asia/Kolkata');
     url.searchParams.set('forecast_days', '16');
     url.searchParams.set('temperature_unit', 'celsius');
     url.searchParams.set('wind_speed_unit', 'kmh');

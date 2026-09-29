@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MapPin, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import {
-  STATE_POSITIONS, STATE_DATA,
-  getConfidence, getBustProb, getForecastVal, getConfidenceByDay,
+  STATE_POSITIONS,
 } from '../data/mockData';
+import { getRegionData } from '../analysis/forecastEngine';
 import { ForecastVariable, Confidence } from '../types';
 
 function confidenceColor(conf: Confidence): string {
@@ -173,12 +173,11 @@ export default function IndiaMap({
   }, [onHoverRegion]);
 
   const getRegionInfo = (name: string) => {
-    const d = STATE_DATA[name];
-    if (!d) return null;
+    const d = getRegionData(name, day);
     return {
-      conf: getConfidence(day, name),
-      bustProb: getBustProb(day, name),
-      forecastVal: getForecastVal(day, name),
+      conf: d.confidence,
+      bustProb: d.bustProbability,
+      forecastVal: d.forecastValue,
       baseData: d,
     };
   };

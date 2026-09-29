@@ -5,15 +5,10 @@ import {
   ThermometerIcon, Droplets, WindIcon, GaugeIcon, Satellite, CloudDrizzle, TrendingUp,
 } from 'lucide-react';
 import { ForecastVariable, Confidence } from './types';
+import { STATE_POSITIONS } from './data/mockData';
 import {
-  STATE_POSITIONS,
-  STATE_DATA,
-  getRegionData,
-  getAnalogueData,
-  getExplanation,
-  getSummaryStats,
-  getConfidenceByDay,
-} from './data/mockData';
+  getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay,
+} from './analysis/forecastEngine';
 import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
 
@@ -67,7 +62,7 @@ function getForecastVal(day: number, region: string): number {
 }
 
 function SummaryCards({ day, variable }: { day: number; variable: ForecastVariable }) {
-  const stats = useMemo(() => getSummaryStats(), []);
+  const stats = useMemo(() => getSummaryStats(day), [day]);
   const summary = useMemo(() => {
     let h = 0, m = 0, l = 0;
     STATE_POSITIONS.forEach((s) => {
@@ -174,9 +169,9 @@ function ConfidenceGauge({ value, label, color }: { value: number; label: string
 }
 
 function RegionDetailPanel({ region, day, variable, onClose }: { region: string; day: number; variable: ForecastVariable; onClose: () => void }) {
-  const data = getRegionData(region);
-  const analogues = getAnalogueData(region);
-  const explanation = getExplanation(region);
+  const data = getRegionData(region, day);
+  const analogues = getAnalogueData(region, day);
+  const explanation = getExplanation(region, day);
 
   return (
     <div className="card p-4 w-80 flex-shrink-0 border-l-2 border-blue-200 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -266,8 +261,8 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
   );
 }
 
-function HistoricalAnalogues({ region }: { region: string }) {
-  const analogues = getAnalogueData(region);
+function HistoricalAnalogues({ region, day }: { region: string; day: number }) {
+  const analogues = getAnalogueData(region, day);
   return (
     <div className="card p-3">
       <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Clock size={15} /> Historical Analogues</h3>
@@ -292,14 +287,14 @@ function HistoricalAnalogues({ region }: { region: string }) {
   );
 }
 
-function AIExplanation({ region }: { region: string }) {
-  const explanation = getExplanation(region);
+function AIExplanation({ region, day }: { region: string; day: number }) {
+  const explanation = getExplanation(region, day);
   return (
     <div className="card p-3 border-blue-100">
       <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><Zap size={15} className="text-blue-500" /> Why is forecast confidence low?</h3>
       <p className="text-xs text-slate-600 leading-relaxed mb-2">{explanation}</p>
       <div className="flex flex-wrap gap-1">
-        {['High historical error', 'Large forecast revision', 'High ensemble spread', 'Strong moisture availability', 'Rapidly evolving weather system'].map((tag) => (
+        {['Paired local records', 'P90 bust threshold', 'Analogue similarity', 'Historical MAE', 'Forecast intensity'].map((tag) => (
           <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-medium">{tag}</span>
         ))}
       </div>
@@ -318,10 +313,10 @@ function DataSources() {
       {open && (
         <div className="px-3 pb-3 space-y-1.5">
           {[
-            { name: 'NWP Forecast', status: 'Mock', icon: <CloudRain size={12} /> },
-            { name: 'Historical Forecasts', status: 'Mock', icon: <Clock size={12} /> },
-            { name: 'Weather Observations', status: 'Mock', icon: <Activity size={12} /> },
-            { name: 'Geographic Data', status: 'Mock', icon: <MapPin size={12} /> },
+            { name: 'Forecast / observation pairs', status: 'Local demo data', icon: <CloudRain size={12} /> },
+            { name: 'Historical error engine', status: 'Deterministic', icon: <Clock size={12} /> },
+            { name: 'Live weather', status: 'Optional Open-Meteo', icon: <Activity size={12} /> },
+            { name: 'Archived NWP + IMD observations', status: 'Pending data access', icon: <MapPin size={12} /> },
           ].map((s) => (
             <div key={s.name} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs">
               <span className="font-medium text-slate-700 flex items-center gap-2">{s.icon} {s.name}</span>
@@ -336,10 +331,10 @@ function DataSources() {
 
 function SystemStatus() {
   const items = [
-    { name: 'Forecast analysis', status: 'Ready' },
+    { name: 'Forecast / observation alignment', status: 'Ready' },
     { name: 'Historical analogue engine', status: 'Ready' },
-    { name: 'Confidence engine', status: 'Ready' },
-    { name: 'AI explanation', status: 'Ready' },
+    { name: 'Deterministic confidence score', status: 'Ready' },
+    { name: 'Evidence-based explanation', status: 'Ready' },
   ];
   return (
     <div className="card p-3">
@@ -364,8 +359,7 @@ export default function App() {
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const { weatherData, loading: weatherLoading, error: weatherError, refetch: refetchWeather, lastFetchTime } = useWeatherData();
 
-  const selectedData = selectedRegion ? getRegionData(selectedRegion) : null;
-  const summary = getSummaryStats();
+  const selectedData = selectedRegion ? getRegionData(selectedRegion, day) : null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -381,7 +375,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <span className="text-[10px] px-2 py-0.5 bg-blue-600/30 text-blue-300 rounded-full border border-blue-500/30 flex items-center gap-1"><Radio size={8} /> Demo Mode</span>
             <Clock size={14} className="text-slate-400" />
-            <span className="text-xs text-slate-400">2024-07-15</span>
+            <span className="text-xs text-slate-400">Local deterministic demo</span>
           </div>
         </div>
       </header>
@@ -395,8 +389,10 @@ export default function App() {
               {VARIABLES.map((v) => (
                 <button
                   key={v.key}
-                  onClick={() => setVariable(v.key)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  onClick={() => v.key === 'rainfall' && setVariable(v.key)}
+                  disabled={v.key !== 'rainfall'}
+                  title={v.key === 'rainfall' ? 'Rainfall is implemented using local paired records' : 'Pending matching historical datasets'}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 disabled:cursor-not-allowed disabled:opacity-60'}`}
                 >
                   {v.icon} {v.label}
                 </button>
@@ -428,7 +424,7 @@ export default function App() {
             </div>
           </div>
           <div className="w-px h-6 bg-slate-200" />
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-all">
+          <button onClick={() => refetchWeather()} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-all">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
@@ -483,8 +479,8 @@ export default function App() {
 
         {/* Bottom Section */}
         <div className="grid grid-cols-3 gap-3">
-          <AIExplanation region={selectedRegion || 'Odisha'} />
-          <HistoricalAnalogues region={selectedRegion || 'Odisha'} />
+          <AIExplanation region={selectedRegion || 'Odisha'} day={day} />
+          <HistoricalAnalogues region={selectedRegion || 'Odisha'} day={day} />
           <DataSources />
         </div>
         <SystemStatus />
