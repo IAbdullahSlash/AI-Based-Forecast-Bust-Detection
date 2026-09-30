@@ -1,4 +1,5 @@
 import imd from './imdObservations.json' with { type: 'json' };
+import tmax from './imdTmax.json' with { type: 'json' };
 
 // Real IMD 0.25° gridded daily rainfall, aggregated to state area means by
 // scripts/extract_imd.py. Regenerate with `npm run extract:imd` after adding
@@ -74,4 +75,41 @@ export function monsoonAverages(region: string) {
     widespreadHeavyDays: Math.round(average(Object.values(summary.widespreadHeavyDays)) * 10) / 10,
     extremeCellDays: Math.round(average(Object.values(summary.extremeCellDays)) * 10) / 10,
   };
+}
+
+// ---------------------------------------------------------------------------
+// IMD 1° gridded daily maximum temperature (scripts/extract_imd_tmax.py)
+// ---------------------------------------------------------------------------
+
+
+interface TmaxFile {
+  source: string;
+  note: string;
+  years: Record<string, { start: string; days: number; regions: Record<string, (number | null)[]> }>;
+  summary: Record<string, { gridCells: number; monthly: { mean: number | null; p95: number | null }[]; hotDays: Record<string, number> }>;
+}
+
+const TMAX = tmax as TmaxFile;
+
+export const TMAX_SOURCE = TMAX.source;
+export const TMAX_YEARS = Object.keys(TMAX.years).sort();
+
+/** Observed state-mean maximum temperature (°C) on an ISO date, or null. */
+export function observedTmax(region: string, isoDate: string): number | null {
+  const year = TMAX.years[isoDate.slice(0, 4)];
+  const series = year?.regions[region];
+  if (!series) return null;
+  const value = series[Math.round((Date.parse(isoDate) - Date.parse(year.start)) / DAY_MS)];
+  return typeof value === 'number' ? value : null;
+}
+
+/** Month is 1–12. */
+export function observedTmaxMonthly(region: string, month: number) {
+  const entry = TMAX.summary[region]?.monthly[month - 1];
+  return entry && entry.mean !== null && entry.p95 !== null ? { mean: entry.mean, p95: entry.p95 } : null;
+}
+
+export function hotDayAverage(region: string) {
+  const values = Object.values(TMAX.summary[region]?.hotDays ?? {});
+  return values.length ? Math.round(average(values)) : null;
 }

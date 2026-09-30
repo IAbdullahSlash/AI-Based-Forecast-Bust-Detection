@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, CloudRain, Database, Scale } from 'lucide-react';
+import { BrainCircuit, CheckCircle2, CloudRain, Database, Scale } from 'lucide-react';
+import { getRealModel } from '../analysis/realModel';
 import nwpForecasts from '../data/nwpForecasts.json';
 import { STATE_POSITIONS } from '../data/regions';
 import {
@@ -147,8 +148,8 @@ export function RealVerificationPanel({ onSelectRegion }: { onSelectRegion: (reg
         </span>
       </div>
       <p className="text-[11px] text-slate-500 mb-3">
-        {verification.forecastSource} runs {verification.forecastInits.join(' & ')} against IMD gridded rainfall on the same state and date.
-        Small sample (2 runs), so lead-time numbers are indicative only.
+        NCMRWF S2S runs of {verification.forecastInits.join(', ')} (Days 1–11) against IMD gridded rainfall on the same state and date.
+        {verification.forecastInits.length} runs is still a small sample, so treat per-lead numbers as indicative.
       </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
@@ -179,7 +180,9 @@ export function RealVerificationPanel({ onSelectRegion }: { onSelectRegion: (reg
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-slate-500 mt-2">Day 0 shows a dry bias ({verification.byLead[0]?.bias} mm), consistent with model spin-up.</p>
+          <p className="text-[10px] text-slate-500 mt-2">
+            Day 0 shows a dry bias ({verification.byLead[0]?.bias} mm), consistent with model spin-up. Error and bust rate grow toward Day 10.
+          </p>
         </div>
         <div>
           <h4 className="text-xs font-semibold text-slate-800 mb-2">Most error-prone states (real)</h4>
@@ -270,6 +273,57 @@ export function ObservedClimatologyPanel({ region, onSelectRegion }: { region: s
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/** Bust model trained on real NCMRWF S2S vs IMD pairs, scored leave-one-run-out. */
+export function RealModelCard() {
+  const model = getRealModel();
+  const skill = Math.round((1 - model.brier / model.climatologyBrier) * 100);
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BrainCircuit size={15} className="text-violet-500" /> Real bust model</h3>
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium flex items-center gap-1">
+          <CheckCircle2 size={11} /> Trained on real data
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-500 mb-3">
+        Logistic regression on {model.pairs.toLocaleString()} NCMRWF S2S vs IMD pairs ({model.busts} busts). Each run is scored by a model trained on the
+        other {model.runs.length - 1} runs only (leave-one-run-out), so these are out-of-sample numbers.
+      </p>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        {[
+          { label: 'ROC AUC (held-out)', value: model.auc.toFixed(2) },
+          { label: 'Brier skill', value: `${skill}%` },
+          { label: 'Rainfall-only AUC', value: model.baselineAuc.toFixed(2) },
+        ].map((item) => (
+          <div key={item.label} className="bg-violet-50 rounded-lg px-2 py-1.5">
+            <div className="text-[10px] text-violet-700">{item.label}</div>
+            <div className="text-sm font-semibold text-violet-950">{item.value}</div>
+          </div>
+        ))}
+      </div>
+      <h4 className="text-xs font-semibold text-slate-800 mb-1.5">Learned drivers</h4>
+      <div className="space-y-1 mb-3">
+        {model.drivers.map((driver) => (
+          <div key={driver.feature} className="flex items-center gap-2 text-[11px]">
+            <span className="flex-1 text-slate-600">{driver.feature}</span>
+            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${driver.weight >= 0 ? 'bg-violet-500' : 'bg-slate-400'}`} style={{ width: `${Math.min(100, Math.abs(driver.weight) * 120)}%` }} />
+            </div>
+            <span className="w-10 text-right tabular-nums text-slate-700">{driver.weight > 0 ? '+' : ''}{driver.weight}</span>
+          </div>
+        ))}
+      </div>
+      <div className="text-[11px] text-slate-500 space-y-1">
+        <p>Held-out AUC by run: {model.byRun.map((run) => `${run.run.slice(5, 7)}/${run.run.slice(0, 4)} ${run.auc.toFixed(2)}`).join(' · ')}.</p>
+        <p>
+          Honest caveat: with only {model.runs.length} runs, forecast rainfall amount alone ranks busts about as well ({model.baselineAuc.toFixed(2)}).
+          The pressure, terrain and lead-time predictors make the probabilities calibrated and explainable; more runs are needed to show they add ranking skill.
+        </p>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CloudLightning, Crosshair, MapPin, Target, Wind, X } from 'lucide-react';
 import {
-  CASES, IMDAA_SOURCE, getCaseBasinSystems, getCaseCells, getCaseDay, getCaseEvaluation, reanalysisAvailable,
+  CASES, IMDAA_SOURCE, getCaseBasinSystems, getCaseCells, getCaseDay, getCaseEvaluation, reanalysisAvailable, reanalysisCovers,
   type CaseCell, type CaseId, type Outcome,
 } from '../analysis/caseStudy';
 import { getRealVerification } from '../analysis/verification';
@@ -51,10 +51,11 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
   const hasForecast = cells.some((cell) => cell.forecast !== null);
   const evaluation = useMemo(() => getCaseEvaluation(caseId), [caseId]);
   const basins = useMemo(() => getCaseBasinSystems(caseId), [caseId]);
+  const hasReanalysis = reanalysisCovers(caseId);
 
   const custom: CustomMapView = {
     title: 'Real outcome map',
-    subtitle: `${date} · Day ${day} (forecast file day${String(day - 1).padStart(2, '0')}) · ${hasForecast ? 'NCMRWF forecast vs IMD observed' : 'no forecast for this lead'}`,
+    subtitle: `${date} · Day ${day} (forecast file day${String(day - 1).padStart(2, '0')}) · ${hasForecast ? 'NCMRWF S2S forecast vs IMD observed' : 'no forecast for this lead'}`,
     modes: [
       { key: 'outcome', label: 'Outcome' },
       { key: 'risk', label: 'Predicted risk' },
@@ -85,7 +86,7 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
               <Row label="Forecast" value={cell.forecast === null ? '—' : `${cell.forecast} mm`} />
               <Row label="Observed" value={cell.observed === null ? '—' : `${cell.observed} mm`} />
               <Row label="Error" value={cell.error === null ? '—' : `${cell.error > 0 ? '+' : ''}${cell.error} mm`} />
-              <Row label="Predicted risk" value={RISK_LABEL[cell.risk]} />
+              <Row label="Bust probability" value={cell.probability === null ? '—' : `${cell.probability}% · ${RISK_LABEL[cell.risk]}`} />
             </div>
           </>
         ),
@@ -131,13 +132,14 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
             <div className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Real data case study</div>
             <h2 className="text-lg font-semibold text-slate-900">{definition.label}</h2>
             <p className="text-xs text-slate-600 mt-1 max-w-3xl">
-              NCMRWF Unified Model forecast issued {definition.run} 00 UTC, checked against IMD gridded rainfall. The weather on each
-              day is diagnosed from IMDAA reanalysis. Day <i>n</i> = {definition.run} + (n − 1). Forecast files end at day05, so Days 7–10
-              show observations and weather only.
+              NCMRWF S2S Unified Model forecast issued {definition.run} 00 UTC (rainfall, sea-level pressure, 10 m wind), checked
+              against IMD gridded rainfall for all ten days. Day <i>n</i> = {definition.run} + (n − 1). Predicted risk comes from a bust
+              model trained on the other runs only, so it never saw this case.
+              {hasReanalysis ? ' IMDAA reanalysis shows what the weather actually did.' : ' IMDAA reanalysis was not downloaded for this month.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {['NCMRWF forecasts', 'IMD observations', 'IMDAA reanalysis'].map((label) => (
+            {['NCMRWF S2S forecasts', 'IMD observations', ...(hasReanalysis ? ['IMDAA reanalysis'] : [])].map((label) => (
               <span key={label} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium flex items-center gap-1">
                 <CheckCircle2 size={11} /> {label}
               </span>
@@ -149,7 +151,7 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: `Real busts · Day ${day}`, value: hasForecast ? busts.length : '—', sub: hasForecast ? `|error| ≥ ${threshold} mm` : 'No forecast at this lead', icon: <AlertTriangle size={18} />, tint: 'bg-rose-50 text-rose-600' },
-          { label: 'Flagged high risk', value: highRisk.length, sub: 'Rule-based, before seeing outcome', icon: <Crosshair size={18} />, tint: 'bg-amber-50 text-amber-600' },
+          { label: 'Predicted high risk', value: highRisk.length, sub: 'Bust probability ≥ 30%, before outcome', icon: <Crosshair size={18} />, tint: 'bg-amber-50 text-amber-600' },
           { label: `Mean abs. error · Day ${day}`, value: mae === null ? '—' : `${mae}`, sub: 'mm, state means', icon: <Target size={18} />, tint: 'bg-sky-50 text-sky-600' },
           { label: 'Busts anticipated (case)', value: `${evaluation.caught}/${evaluation.busts}`, sub: `${evaluation.hitRate}% flagged elevated or high risk`, icon: <CheckCircle2 size={18} />, tint: 'bg-emerald-50 text-emerald-600' },
         ].map((card) => (
@@ -166,7 +168,7 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
         ))}
       </div>
 
-      <CaseTimeline caseId={caseId} day={day} setDay={setDay} />
+      <CaseTimeline caseId={caseId} day={day} setDay={setDay} showReanalysis={hasReanalysis} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         <div className="lg:col-span-7 xl:col-span-8">
@@ -178,7 +180,7 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
         </div>
         <div className="lg:col-span-5 xl:col-span-4">
           {selected ? (
-            <CaseRegionPanel cell={selected} caseId={caseId} threshold={threshold} onClose={() => onSelectRegion(null)} />
+            <CaseRegionPanel cell={selected} caseId={caseId} threshold={threshold} hasReanalysis={hasReanalysis} onClose={() => onSelectRegion(null)} />
           ) : (
             <div className="card flex items-center justify-center text-center py-24">
               <div>
@@ -195,7 +197,8 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 mb-1"><CloudLightning size={15} className="text-indigo-500" /> Weather systems diagnosed from IMDAA</h3>
           <p className="text-[11px] text-slate-500 mb-3">{IMDAA_SOURCE}. Strongest 850 hPa cyclonic circulation per basin each day.</p>
-          {basins.length === 0 ? <p className="text-xs text-slate-500">No organised basin-scale system diagnosed.</p> : (
+          {!hasReanalysis ? <p className="text-xs text-slate-500">IMDAA reanalysis was not downloaded for this month, so observed weather systems are not shown. Forecast lows appear in each state's details.</p>
+            : basins.length === 0 ? <p className="text-xs text-slate-500">No organised basin-scale system diagnosed.</p> : (
             <div className="space-y-1.5">
               {basins.map((system) => (
                 <button key={`${system.day}-${system.basin}`} onClick={() => setDay(system.day)}
@@ -206,16 +209,16 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
               ))}
             </div>
           )}
-          {caseId === 'jun2015' && basins.length > 0 && (
+          {caseId === '2015-06-01' && basins.length > 0 && (
             <p className="text-[11px] text-slate-500 mt-2">This is Cyclone Ashobaa (7–12 June 2015), which pulled moisture away from India's west coast during the monsoon onset.</p>
           )}
         </div>
 
         <div className="card p-4">
-          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 mb-1"><Crosshair size={15} className="text-emerald-600" /> Did the risk flags anticipate the busts?</h3>
+          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 mb-1"><Crosshair size={15} className="text-emerald-600" /> Did the predicted risk anticipate the busts?</h3>
           <p className="text-[11px] text-slate-500 mb-3">
-            Transparent rules using only forecast-time information: nearby cyclonic system, steep terrain and strong moist flow, forecast above the observed P95, onset phase, and lead day.
-            Scored against real outcomes for Days 1–6 ({evaluation.verified} state-days).
+            Predicted risk is the real bust model's probability for this run, from a model trained on the other runs only
+            (≥ 30% high, 15–30% elevated). Scored against real outcomes for all {evaluation.verified} state-days.
           </p>
           <table className="w-full text-xs">
             <thead>
@@ -232,10 +235,12 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
               ))}
             </tbody>
           </table>
-          <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
             {[
               { label: 'Busts flagged', value: `${evaluation.hitRate}%` },
               { label: 'False alarms', value: `${evaluation.falseAlarmRatio}%` },
+              { label: 'Model AUC', value: evaluation.modelAuc.toFixed(2) },
+              { label: 'Rule-flag AUC', value: evaluation.rulesAuc.toFixed(2) },
               { label: 'Base bust rate', value: `${evaluation.baseRate}%` },
             ].map((item) => (
               <div key={item.label} className="bg-slate-50 rounded-lg px-2.5 py-2">
@@ -244,14 +249,14 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-slate-500 mt-2">One 10-day case is a small sample; treat these as indicative. The trained bust model is not used here because it learned from synthetic data.</p>
+          <p className="text-[11px] text-slate-500 mt-2">One 10-day case is a small sample; treat these numbers as indicative. The synthetic demo model is not used here.</p>
         </div>
       </div>
     </div>
   );
 }
 
-function CaseTimeline({ caseId, day, setDay }: { caseId: CaseId; day: number; setDay: (day: number) => void }) {
+function CaseTimeline({ caseId, day, setDay, showReanalysis }: { caseId: CaseId; day: number; setDay: (day: number) => void; showReanalysis: boolean }) {
   const cells = getCaseCells(caseId);
   return (
     <div className="card p-4">
@@ -280,7 +285,7 @@ function CaseTimeline({ caseId, day, setDay }: { caseId: CaseId; day: number; se
                 </div>
                 <div className={`text-[10px] mt-1 ${selected ? 'text-slate-300' : 'text-slate-500'}`}>
                   {total ? (counts.bust ? <span className={selected ? 'text-rose-300' : 'text-rose-600'}>{counts.bust} bust{counts.bust > 1 ? 's' : ''}</span> : 'no busts') : 'no forecast'}
-                  {!reanalysisAvailable(date) && <span className="block text-[9px] opacity-70">no reanalysis</span>}
+                  {showReanalysis && !reanalysisAvailable(date) && <span className="block text-[9px] opacity-70">no reanalysis</span>}
                 </div>
               </button>
             );
@@ -291,12 +296,12 @@ function CaseTimeline({ caseId, day, setDay }: { caseId: CaseId; day: number; se
   );
 }
 
-function CaseRegionPanel({ cell, caseId, threshold, onClose }: { cell: CaseCell; caseId: CaseId; threshold: number; onClose: () => void }) {
+function CaseRegionPanel({ cell, caseId, threshold, hasReanalysis, onClose }: { cell: CaseCell; caseId: CaseId; threshold: number; hasReanalysis: boolean; onClose: () => void }) {
   const series = getCaseCells(caseId).filter((item) => item.region === cell.region);
   const max = Math.max(1, ...series.map((item) => Math.max(item.forecast ?? 0, item.observed ?? 0)));
   const d = cell.diagnostics;
   const verdict = cell.outcome === 'bust'
-    ? (cell.risk !== 'high' ? { text: 'Bust anticipated: risk was flagged beforehand', tone: 'text-emerald-700 bg-emerald-50' } : { text: 'Missed bust: no risk flags raised', tone: 'text-rose-700 bg-rose-50' })
+    ? (cell.risk !== 'high' ? { text: 'Bust anticipated: elevated risk was predicted beforehand', tone: 'text-emerald-700 bg-emerald-50' } : { text: 'Missed bust: predicted risk was low', tone: 'text-rose-700 bg-rose-50' })
     : cell.outcome === 'no-forecast' ? { text: 'No forecast at this lead time', tone: 'text-slate-600 bg-slate-100' }
     : cell.risk === 'low' ? { text: 'False alarm: flagged, but the forecast held', tone: 'text-amber-700 bg-amber-50' }
     : { text: 'Forecast held, as expected', tone: 'text-emerald-700 bg-emerald-50' };
@@ -312,7 +317,9 @@ function CaseRegionPanel({ cell, caseId, threshold, onClose }: { cell: CaseCell;
         </div>
         <div className="flex flex-wrap gap-1.5 mt-2">
           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${OUTCOME_STYLE[cell.outcome].badge}`}>{OUTCOME_STYLE[cell.outcome].label}</span>
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded text-white" style={{ backgroundColor: confidenceColor(cell.risk) }}>{RISK_LABEL[cell.risk]} predicted</span>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded text-white" style={{ backgroundColor: confidenceColor(cell.risk) }}>
+            {cell.probability === null ? 'No prediction' : `${cell.probability}% bust probability · ${RISK_LABEL[cell.risk]}`}
+          </span>
         </div>
         <div className={`text-xs font-medium rounded-md px-2 py-1.5 mt-2 ${verdict.tone}`}>{verdict.text}</div>
       </div>
@@ -353,8 +360,29 @@ function CaseRegionPanel({ cell, caseId, threshold, onClose }: { cell: CaseCell;
           <p className="text-[10px] text-slate-500 mt-1">Bust threshold ±{threshold} mm. Days without a blue bar have no forecast.</p>
         </div>
 
+        {cell.drivers.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold text-slate-800 mb-1.5">Model drivers (raising the probability)</h4>
+            <ul className="space-y-1">
+              {cell.drivers.map((driver) => (
+                <li key={driver.feature} className="flex items-center justify-between text-xs text-slate-600">
+                  <span>{driver.feature}</span><span className="text-[10px] font-semibold text-violet-600">+{driver.contribution}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {cell.mslp !== null && (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-600">
+            <span>Forecast MSLP <b className="text-slate-800">{cell.mslp} hPa</b></span>
+            <span>vs model normal <b className="text-slate-800">{cell.mslpAnomaly !== null && cell.mslpAnomaly > 0 ? '+' : ''}{cell.mslpAnomaly} hPa</b></span>
+            <span className="col-span-2">Pressure change <b className="text-slate-800">{cell.pressureTendency ?? '—'} hPa/day</b></span>
+          </div>
+        )}
+
         <div>
-          <h4 className="text-xs font-semibold text-slate-800 mb-1.5">Risk flags (known at forecast time)</h4>
+          <h4 className="text-xs font-semibold text-slate-800 mb-1.5">Rule flags (known at forecast time)</h4>
           {cell.flags.length === 0 ? <p className="text-xs text-slate-500">None raised.</p> : (
             <ul className="space-y-1">
               {cell.flags.map((flag) => (
@@ -363,15 +391,15 @@ function CaseRegionPanel({ cell, caseId, threshold, onClose }: { cell: CaseCell;
                 </li>
               ))}
               <li className="flex items-center justify-between text-xs font-semibold text-slate-800 border-t border-slate-100 pt-1">
-                <span>Risk score</span><span>{cell.riskScore} → {RISK_LABEL[cell.risk]}</span>
+                <span>Rule score</span><span>{cell.riskScore} points</span>
               </li>
             </ul>
           )}
         </div>
 
         <div>
-          <h4 className="text-xs font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5"><Wind size={12} /> Weather diagnosed from IMDAA</h4>
-          {!d ? <p className="text-xs text-slate-500">Reanalysis incomplete for this date.</p> : (
+          <h4 className="text-xs font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5"><Wind size={12} /> What the weather actually did (IMDAA)</h4>
+          {!hasReanalysis ? <p className="text-xs text-slate-500">IMDAA reanalysis not downloaded for this month.</p> : !d ? <p className="text-xs text-slate-500">Reanalysis incomplete for this date.</p> : (
             <>
               {cell.signals.length > 0 && (
                 <ul className="space-y-1.5 mb-2">

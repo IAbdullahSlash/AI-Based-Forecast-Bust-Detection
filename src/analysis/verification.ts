@@ -1,10 +1,10 @@
 import type { Confidence } from '../types/index.ts';
 import nwp from '../data/nwpForecasts.json' with { type: 'json' };
-import { IMD_YEARS, observedRainfall } from '../data/observations.ts';
+import { IMD_YEARS, observedMonthly, observedRainfall } from '../data/observations.ts';
 import { STATE_POSITIONS } from '../data/regions.ts';
 import { percentile, round } from './metrics.ts';
 
-// Real verification: NCMRWF Unified Model rainfall forecasts (dataset/*.nc)
+// Real verification: NCMRWF S2S Unified Model forecasts (dataset/s2s/*.nc)
 // joined with IMD gridded observations (dataset/IMD/*.nc) on state and valid
 // date. File dayNN of a run initialised on date D is matched to IMD date D+NN;
 // that alignment correlates best with the observations (checked against ±1 day).
@@ -12,8 +12,10 @@ import { percentile, round } from './metrics.ts';
 
 interface NwpFile {
   source: string;
-  initializations: Record<string, { days: number[]; regions: Record<string, { mean: number; max: number }[]> }>;
+  initializations: Record<string, { days: number[]; regions: Record<string, NwpCell[]> }>;
 }
+
+interface NwpCell { mean: number; max: number; mslp?: number; wind?: number; u10?: number; v10?: number }
 
 export interface RealPair {
   region: string;
@@ -23,6 +25,13 @@ export interface RealPair {
   forecast: number;
   observed: number;
   error: number;
+  bust: boolean;
+  /** Forecast-time predictors (null where the file for that lead has no such variable). */
+  mslp: number | null;
+  mslpAnomaly: number | null;
+  pressureTendency: number | null;
+  wind: number | null;
+  observedP95: number | null;
 }
 
 export interface LeadVerification {
@@ -91,15 +100,36 @@ let cached: RealVerification | null = null;
 export function getRealVerification(): RealVerification {
   if (cached) return cached;
   const file = nwp as NwpFile;
+  // Model climatology of sea-level pressure per state (mean over every run and lead),
+  // the reference for forecast pressure anomalies.
+  const mslpClimate = new Map<string, number>();
+  for (const { name } of STATE_POSITIONS) {
+    const values = Object.values(file.initializations)
+      .flatMap((run) => run.regions[name] ?? [])
+      .map((cell) => cell.mslp)
+      .filter((value): value is number => typeof value === 'number');
+    if (values.length) mslpClimate.set(name, values.reduce((sum, value) => sum + value, 0) / values.length);
+  }
+
   const pairs: RealPair[] = [];
   for (const [initDate, run] of Object.entries(file.initializations)) {
     run.days.forEach((leadDay, index) => {
       const validDate = addDays(initDate, leadDay);
       for (const { name: region } of STATE_POSITIONS) {
-        const forecast = run.regions[region]?.[index]?.mean;
+        const cell = run.regions[region]?.[index];
         const observed = observedRainfall(region, validDate);
-        if (typeof forecast !== 'number' || observed === null) continue;
-        pairs.push({ region, initDate, validDate, leadDay, forecast, observed, error: round(forecast - observed) });
+        if (!cell || observed === null) continue;
+        const previous = run.regions[region]?.[index - 1];
+        const mslp = cell.mslp ?? null;
+        const climate = mslpClimate.get(region);
+        pairs.push({
+          region, initDate, validDate, leadDay, forecast: cell.mean, observed, error: round(cell.mean - observed), bust: false,
+          mslp,
+          mslpAnomaly: mslp !== null && climate !== undefined ? round(mslp - climate) : null,
+          pressureTendency: mslp !== null && typeof previous?.mslp === 'number' ? round(mslp - previous.mslp) : null,
+          wind: cell.wind ?? null,
+          observedP95: observedMonthly(region, Number(validDate.slice(5, 7)))?.p95 ?? null,
+        });
       }
     });
   }
@@ -107,6 +137,7 @@ export function getRealVerification(): RealVerification {
   // Pooled P90 absolute error: too few pairs per state for regional thresholds yet.
   const bustThreshold = round(Math.max(MIN_BUST_MM, percentile(pairs.map((p) => Math.abs(p.error)), 0.9)));
   const isBust = (pair: RealPair) => Math.abs(pair.error) >= bustThreshold;
+  pairs.forEach((pair) => { pair.bust = isBust(pair); });
 
   const leads = [...new Set(pairs.map((p) => p.leadDay))].sort((a, b) => a - b);
   const byLead = leads.map((leadDay) => {

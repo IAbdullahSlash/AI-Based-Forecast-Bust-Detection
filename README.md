@@ -27,10 +27,11 @@ The server imports the same TypeScript engine as the dashboard, so it needs Node
 
 ## Real data: NCMRWF forecasts + IMD observations
 
-- `dataset/*.nc`: NCMRWF Unified Model hindcast rainfall (runs 2015-06-01 and 2015-07-01, day00–05). Extract with `npm run extract:nwp`.
+- `dataset/s2s/*.nc`: NCMRWF S2S hindcast forecasts from rds.ncmrwf.gov.in: runs 2015-06-01, 07-01, 08-01 and 09-01, day00–10, with rainfall, sea-level pressure and 10 m wind. Extract with `npm run extract:nwp`.
 - `dataset/IMD/RF25_ind<YEAR>_rfp25.nc`: IMD Pune 0.25° gridded daily rainfall (currently 2015 and 2022–2024). Extract with `npm run extract:imd` (needs `scipy`).
-- Both are averaged over the same state boundaries and joined on state + valid date (IMD date = run date + NN for file `dayNN`). The result is **300 real forecast/observation pairs**, shown in the dashboard's *Real observations & verification* section and served at `/api/verification`.
-- In the 2015 sample, the largest real busts are orographic heavy rain in Meghalaya and Sikkim (strongly under-forecast), and Day 0 has a dry bias (model spin-up).
+- Both are averaged over the same state boundaries and joined on state + valid date (IMD date = run date + NN for file `dayNN`). The result is **1,100 real forecast/observation pairs**, shown in the dashboard's *Real observations & verification* section and served at `/api/verification`.
+- Real error grows with lead time (about 4 mm at Days 1–4, 6–8 mm at Days 5–10, 18% busts at Day 10). The largest busts are orographic heavy rain in Meghalaya and Sikkim (strongly under-forecast), and Day 0 has a dry bias (model spin-up).
+- A **real bust model** is trained on these pairs and scored leave-one-run-out: held-out AUC 0.75, 17% Brier skill. Forecast rainfall alone reaches 0.78, so more runs are needed to show the extra predictors add ranking skill (`/api/real-model`).
 - IMD June normals replace the hand-set rainfall climatology, and the explanation engine cites observed percentiles and each state's real error record.
 - `dataset/IMDAA/`: NCMRWF IMDAA reanalysis (850/200 hPa temperature and wind, 3-hourly, 1–10 June and 1–10 July 2015). Extract with `npm run extract:imdaa`. It powers the **real case studies** (Scenario switch → Jun 2015 / Jul 2015): real busts by state and day, weather systems diagnosed from the reanalysis (e.g. Cyclone Ashobaa, 6–10 June 2015), and a check of whether rule-based risk flags anticipated the busts. Also served at `/api/case`.
 - Still synthetic: the 6,000-pair training archive and the 10-day demo scenario. Replacing them needs more NCMRWF runs (ideally daily initialisations over several monsoons) paired the same way.

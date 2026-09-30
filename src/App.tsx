@@ -10,7 +10,7 @@ import {
   DAYS, getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
 } from './analysis/forecastEngine';
 import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard } from './components/Insights';
-import { NwpIngestionPanel, ObservedClimatologyPanel, RealVerificationPanel } from './components/RealData';
+import { NwpIngestionPanel, ObservedClimatologyPanel, RealModelCard, RealVerificationPanel } from './components/RealData';
 import { IMD_YEAR_LABEL, IMD_YEARS, getRealVerification, monsoonAverages, observedMonthly, observedSummary } from './analysis/forecastEngine';
 import IndiaMap from './components/IndiaMap';
 import { CaseStudyView } from './components/CaseStudy';
@@ -630,7 +630,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           <div className="lg:col-span-7"><RealVerificationPanel onSelectRegion={setSelectedRegion} /></div>
-          <div className="lg:col-span-5"><NwpIngestionPanel /></div>
+          <div className="lg:col-span-5 space-y-4"><RealModelCard /><NwpIngestionPanel /></div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">

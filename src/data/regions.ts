@@ -1,5 +1,5 @@
 import type { EventType, RegionClimatology, StatePosition } from '../types/index.ts';
-import { observedMonthly } from './observations.ts';
+import { observedMonthly, observedTmaxMonthly } from './observations.ts';
 
 export const STATE_POSITIONS: StatePosition[] = [
   { name: 'Jammu & Kashmir', x: 420, y: 110, lat: 33.8, lng: 74.8 },
@@ -64,7 +64,7 @@ export const EVENT_PROFILES: Record<EventType, {
 
 /** June climatology for each state (24 h rainfall mm, Tmax °C, wind km/h, MSLP hPa).
  * The rainfall values here are fallbacks only: they are replaced below by the
- * observed IMD June mean. Temperature, wind and pressure are still estimates. */
+ * observed IMD June means (rainfall and maximum temperature). Wind and pressure are still estimates. */
 export const REGION_CLIMATOLOGY: Record<string, RegionClimatology> = {
   'Jammu & Kashmir': { rainfall: 4, temperature: 32, windSpeed: 12, pressure: 1003, events: { 'Western disturbance': 3, 'Fair weather': 2, 'Heavy rainfall': 1 } },
   'Himachal Pradesh': { rainfall: 5, temperature: 31, windSpeed: 11, pressure: 1004, events: { 'Western disturbance': 3, 'Heavy rainfall': 2, 'Fair weather': 1 } },
@@ -96,6 +96,8 @@ export const REGION_CLIMATOLOGY: Record<string, RegionClimatology> = {
 for (const [name, climate] of Object.entries(REGION_CLIMATOLOGY)) {
   const june = observedMonthly(name, 6);
   if (june) climate.rainfall = june.mean;
+  const juneTmax = observedTmaxMonthly(name, 6);
+  if (juneTmax) climate.temperature = juneTmax.mean;
 }
 
 /** Scales regime rainfall to how wet a region is climatologically. */

@@ -10,6 +10,7 @@ import {
 } from './src/analysis/forecastEngine.ts';
 import { STATE_POSITIONS } from './src/data/regions.ts';
 import { CASES, getCaseBasinSystems, getCaseDay, getCaseEvaluation } from './src/analysis/caseStudy.ts';
+import { getRealModel } from './src/analysis/realModel.ts';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const distDirectory = resolve(root, 'dist');
@@ -223,7 +224,7 @@ function handleAnalysisApi(url) {
       return url.searchParams.get('pairs') === 'true' ? { ...summary, pairs } : { ...summary, pairCount: pairs.length };
     }
     case '/api/case': {
-      const id = url.searchParams.get('id') ?? 'jun2015';
+      const id = url.searchParams.get('id') ?? CASES[0]?.id;
       const definition = CASES.find((item) => item.id === id);
       if (!definition) throw new Error(`id must be one of: ${CASES.map((item) => item.id).join(', ')}.`);
       const { day } = queryOptions(url);
@@ -234,6 +235,10 @@ function handleAnalysisApi(url) {
         basinSystems: getCaseBasinSystems(definition.id),
         evaluation: getCaseEvaluation(definition.id),
       };
+    }
+    case '/api/real-model': {
+      const { outOfFold, ...summary } = getRealModel();
+      return summary;
     }
     case '/api/imd':
       return {
