@@ -5,7 +5,6 @@ import {
   ChevronLeft, ChevronRight, X, History, Moon, Sun,
 } from 'lucide-react';
 import { ForecastVariable, Confidence, EvaluatedVariable, ReasonItem } from './types';
-import { STATE_POSITIONS } from './data/regions';
 import {
   DAYS, getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
 } from './analysis/forecastEngine';
@@ -98,7 +97,6 @@ function SummaryCards({ day, variable }: { day: number; variable: EvaluatedVaria
   );
 }
 
-/** Day 1–10 strip: each day shows the share of regions at each confidence level. */
 function ForecastTimeline({ day, setDay, variable }: { day: number; setDay: (d: number) => void; variable: EvaluatedVariable }) {
   return (
     <div className="card p-4">
@@ -242,7 +240,6 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
   );
 }
 
-/** Real IMD facts for the selected state, shown in the detail panel. */
 function ObservedFacts({ region }: { region: string }) {
   const june = observedMonthly(region, 6);
   const monsoon = monsoonAverages(region);
@@ -509,7 +506,7 @@ export default function App() {
               </span>
             ) : (
               <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-400/10 border border-amber-300/30 text-amber-200 flex items-center gap-1.5">
-                <Activity size={12} /> Demo data
+                <Activity size={12} /> Synthetic data
               </span>
             )}
 
@@ -522,12 +519,12 @@ export default function App() {
           <div className="flex items-center gap-2 min-w-0 max-w-full">
             <span className="shrink-0 text-[11px] font-medium text-slate-500 uppercase tracking-wide">Scenario</span>
             <div className="flex p-0.5 bg-slate-100 rounded-lg min-w-0 overflow-x-auto [scrollbar-width:none]">
-              {[{ id: 'synthetic' as const, short: 'Demo 2026' }, ...CASES].map((option) => (
+              {[{ id: 'synthetic' as const, short: 'Jun 2026' }, ...CASES].map((option) => (
                 <button
                   key={option.id}
                   onClick={() => setScenario(option.id)}
                   aria-pressed={scenario === option.id}
-                  title={option.id === 'synthetic' ? 'Synthetic 10-day scenario (demo data)' : `${'label' in option ? option.label : ''} (real data)`}
+                  title={option.id === 'synthetic' ? 'Synthetic 10-day scenario' : `${'label' in option ? option.label : ''} (real data)`}
                   className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${scenario === option.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                 >
                   {option.id !== 'synthetic' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}

@@ -6,11 +6,8 @@ import { getRealVerification, type RealPair } from './verification.ts';
 import { OROGRAPHIC, REAL_FEATURES, TEMP_FEATURES, auc, getRealModel, getRealTempModel } from './realModel.ts';
 import { getTempVerification, type TempPair } from './tempVerification.ts';
 
-// Real case studies: each NCMRWF S2S run (dataset/s2s) verified against IMD.
-// Day d of a case is the date run + (d − 1) and uses forecast file day(d − 1).
-// Predicted risk comes only from forecast-time information: the real bust model
-// (probabilities from a model that never saw this run) and transparent rule
-// flags. IMDAA reanalysis, where available, explains what the weather actually did.
+// Day d of a case is run + (d − 1) and uses forecast file day(d − 1).
+// Risk uses forecast-time information only; IMDAA explains outcomes, never predicts them.
 
 export type CaseId = string;
 export type CaseVariable = 'rainfall' | 'temperature';
@@ -291,7 +288,6 @@ export function reanalysisCovers(id: CaseId) {
   return Array.from({ length: 10 }, (_, i) => addDays(definition.run, i)).some((date) => date in REANALYSIS.days);
 }
 
-/** How well the predicted risk anticipated the real busts in this case. */
 export function getCaseEvaluation(id: CaseId, variable: CaseVariable = 'rainfall') {
   const verified = getCaseCells(id, variable).filter((cell) => cell.error !== null);
   const labels = verified.map((cell) => (cell.outcome === 'bust' ? 1 : 0));

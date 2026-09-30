@@ -5,7 +5,6 @@ import {
   CASES, IMDAA_SOURCE, caseBustThreshold, getCaseBasinSystems, getCaseCells, getCaseDay, getCaseEvaluation, reanalysisAvailable, reanalysisCovers,
   type CaseCell, type CaseId, type CaseVariable, type Outcome,
 } from '../analysis/caseStudy';
-import { getRealVerification } from '../analysis/verification';
 import { CONFIDENCE_COLORS, confidenceColor } from '../theme';
 import IndiaMap, { type CustomMapView } from './IndiaMap';
 
@@ -258,7 +257,7 @@ export function CaseStudyView({ caseId, variable, day, setDay, selectedRegion, o
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-slate-500 mt-2">One 10-day case is a small sample; treat these numbers as indicative. The synthetic demo model is not used here.</p>
+          <p className="text-[11px] text-slate-500 mt-2">One 10-day case is a small sample; treat these numbers as indicative. The synthetic model is not used here.</p>
           {variable === 'temperature' && caseId === '2015-06-01' && (
             <p className="text-[11px] text-amber-700 mt-1">
               June temperature busts are mostly a seasonal correction bias: the MOS correction was learned from July–September runs,

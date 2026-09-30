@@ -4,11 +4,7 @@ import { IMD_YEARS, observedMonthly, observedRainfall } from '../data/observatio
 import { STATE_POSITIONS } from '../data/regions.ts';
 import { percentile, round } from './metrics.ts';
 
-// Real verification: NCMRWF S2S Unified Model forecasts (dataset/s2s/*.nc)
-// joined with IMD gridded observations (dataset/IMD/*.nc) on state and valid
-// date. File dayNN of a run initialised on date D is matched to IMD date D+NN;
-// that alignment correlates best with the observations (checked against ±1 day).
-// Both sides are state means over the same boundary masks.
+// File dayNN of a run initialised on D matches IMD date D+NN (correlates best; ±1 day was checked).
 
 interface NwpFile {
   source: string;
@@ -100,8 +96,7 @@ let cached: RealVerification | null = null;
 export function getRealVerification(): RealVerification {
   if (cached) return cached;
   const file = nwp as NwpFile;
-  // Model climatology of sea-level pressure per state (mean over every run and lead),
-  // the reference for forecast pressure anomalies.
+  // Pressure anomalies are relative to the model's own climatology (mean over all runs and leads).
   const mslpClimate = new Map<string, number>();
   for (const { name } of STATE_POSITIONS) {
     const values = Object.values(file.initializations)

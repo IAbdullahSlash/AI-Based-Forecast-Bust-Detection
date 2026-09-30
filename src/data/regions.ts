@@ -62,9 +62,8 @@ export const EVENT_PROFILES: Record<EventType, {
     description: 'stable conditions are generally well forecast' },
 };
 
-/** June climatology for each state (24 h rainfall mm, Tmax °C, wind km/h, MSLP hPa).
- * The rainfall and temperature values here are fallbacks only: they are replaced below by the
- * observed IMD June means (rainfall and maximum temperature). Wind and pressure are still estimates. */
+/** June climatology (rain mm, Tmax °C, wind km/h, MSLP hPa). Rain and Tmax are overwritten
+ * below with observed IMD June means; wind and pressure are estimates. */
 export const REGION_CLIMATOLOGY: Record<string, RegionClimatology> = {
   'Jammu & Kashmir': { rainfall: 4, temperature: 32, windSpeed: 12, pressure: 1003, events: { 'Western disturbance': 3, 'Fair weather': 2, 'Heavy rainfall': 1 } },
   'Himachal Pradesh': { rainfall: 5, temperature: 31, windSpeed: 11, pressure: 1004, events: { 'Western disturbance': 3, 'Heavy rainfall': 2, 'Fair weather': 1 } },
@@ -100,7 +99,6 @@ for (const [name, climate] of Object.entries(REGION_CLIMATOLOGY)) {
   if (juneTmax) climate.temperature = juneTmax.mean;
 }
 
-/** Scales regime rainfall to how wet a region is climatologically. */
 export function wetness(region: string) {
   const base = REGION_CLIMATOLOGY[region]?.rainfall ?? 10;
   return Math.min(1.5, Math.max(0.55, (base + 20) / 32));

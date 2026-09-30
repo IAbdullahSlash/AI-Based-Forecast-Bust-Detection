@@ -52,7 +52,6 @@ const MAP = (() => {
   };
 })();
 
-// Hand-tuned label offsets where the centroid sits awkwardly.
 const LABEL_NUDGE: Record<string, [number, number]> = {
   Goa: [-10, 0], Haryana: [-2, 4], 'West Bengal': [4, 8], Sikkim: [0, -6], 'Himachal Pradesh': [0, 2],
 };
@@ -104,7 +103,6 @@ export default function IndiaMap({
     return mapMode === 'confidence' ? '#ffffff' : bustTextColor(data.bustProbability);
   };
 
-  /** Converts a client point to SVG user units. */
   const toSvg = useCallback((clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0, scale: 1 };

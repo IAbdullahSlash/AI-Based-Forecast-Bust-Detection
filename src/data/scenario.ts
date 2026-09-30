@@ -1,9 +1,6 @@
 import type { EventType, ForecastFingerprint } from '../types/index.ts';
 import { EVENT_PROFILES, REGION_CLIMATOLOGY, STATE_POSITIONS, wetness } from './regions.ts';
 
-// The "current" NWP forecast the dashboard evaluates. It is a synthetic but
-// meteorologically coherent June scenario; replace `getFingerprint` with values
-// aggregated from real forecast grids (e.g. the NetCDF files in dataset/).
 
 export const SCENARIO = {
   issuedAt: '2026-06-10T00:00Z',

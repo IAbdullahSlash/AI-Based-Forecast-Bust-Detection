@@ -7,7 +7,6 @@ import {
 } from '../analysis/forecastEngine';
 
 
-/** Region × lead-time matrix of bust probability. */
 export function BustHeatmap({ variable, day, region, onSelect }: {
   variable: EvaluatedVariable; day: number; region: string | null;
   onSelect: (region: string, day: number) => void;

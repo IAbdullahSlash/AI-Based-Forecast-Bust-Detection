@@ -40,7 +40,6 @@ const addDays = (isoDate: string, days: number) => new Date(Date.parse(isoDate) 
 
 type NwpMode = 'forecast' | 'observed' | 'error';
 
-/** NCMRWF UM hindcast rainfall, the matching IMD observation, and their difference. */
 export function NwpIngestionPanel() {
   const inits = Object.keys(NWP.initializations);
   const [init, setInit] = useState(inits[0]);
@@ -122,7 +121,6 @@ export function NwpIngestionPanel() {
   );
 }
 
-/** Real verification of NCMRWF forecasts against IMD observations. */
 export function RealVerificationPanel({ onSelectRegion }: { onSelectRegion: (region: string) => void }) {
   const verification = getRealVerification();
   if (!verification.overall) {
@@ -230,7 +228,6 @@ export function RealVerificationPanel({ onSelectRegion }: { onSelectRegion: (reg
   );
 }
 
-/** IMD observed rainfall climatology per state. */
 export function ObservedClimatologyPanel({ region, onSelectRegion }: { region: string | null; onSelectRegion: (region: string) => void }) {
   const rows = useMemo(() => STATE_POSITIONS.map((state) => ({
     name: state.name,
@@ -279,7 +276,6 @@ export function ObservedClimatologyPanel({ region, onSelectRegion }: { region: s
   );
 }
 
-/** Bust model trained on real NCMRWF S2S vs IMD pairs, scored leave-one-run-out. */
 export function RealModelCard({ variable = 'rainfall' }: { variable?: 'rainfall' | 'temperature' }) {
   const model = variable === 'temperature' ? getRealTempModel() : getRealModel();
   const perRunMean = Math.round((model.byRun.reduce((sum, run) => sum + run.auc, 0) / model.byRun.length) * 100) / 100;
@@ -339,7 +335,6 @@ export function RealModelCard({ variable = 'rainfall' }: { variable?: 'rainfall'
   );
 }
 
-/** Real temperature verification: MOS-corrected S2S 925 hPa forecast vs IMD Tmax. */
 export function TempVerificationPanel({ onSelectRegion }: { onSelectRegion: (region: string) => void }) {
   const verification = getTempVerification();
   if (!verification.overall) return null;

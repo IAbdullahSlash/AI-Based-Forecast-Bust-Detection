@@ -1,9 +1,8 @@
-import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-// The analysis engine is shared with the dashboard; Node >= 22.18 runs the
-// TypeScript sources directly via type stripping.
+// Node >= 22.18 runs the shared TypeScript engine directly via type stripping.
 import {
   DAYS, IMD_NOTE, IMD_SOURCE, IMD_YEARS, SCENARIO, getAnalogueData, getConfidenceByDay, getErrorProneRegions,
   getExplanation, getLeadErrorCurve, getModelMetrics, getRealVerification, getRegionData, monsoonAverages, observedSummary,
@@ -15,10 +14,7 @@ import { getTempVerification } from './src/analysis/tempVerification.ts';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const distDirectory = resolve(root, 'dist');
-const datasetDirectory = resolve(root, 'dataset');
 const port = Number(process.env.PORT || 8787);
-// Use a stable, low-latency text model for dashboard briefings. Override via
-// GEMINI_MODEL if the deployment has a different approved model.
 const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const maxBodySize = 32 * 1024;
 
@@ -70,8 +66,8 @@ function createPrompt(evidence) {
 
   return `You are writing a concise meteorological analyst briefing for a forecast-bust dashboard.\n\n` +
     `Use ONLY the evidence below. Do not calculate, change, endorse, or invent a probability. ` +
-    `Do not claim these synthetic local demo records are real observations or operational data. ` +
-    `Mention that this is a local demonstration when appropriate. Explain uncertainty in plain language, in 85-125 words, as one paragraph.\n\n` +
+    `Do not claim these synthetic records are real observations or operational data. ` +
+    `Never use the words "demo" or "demonstration". Explain uncertainty in plain language, in 85-125 words, as one paragraph.\n\n` +
     `Evidence:\n${JSON.stringify({
       region,
       forecastDay: day,
@@ -129,7 +125,7 @@ function createCasePrompt({ caseId, day, region, variable }) {
 
   return `You are writing a concise post-event briefing for an operational forecaster reviewing a past forecast (hindcast).\n\n` +
     `Use ONLY the evidence below. Do not calculate, change or invent any number or probability. ` +
-    `These are real archived data (NCMRWF S2S hindcast forecasts, IMD gridded observations, IMDAA reanalysis), so do not call them synthetic or a demo. ` +
+    `These are real archived data (NCMRWF S2S hindcast forecasts, IMD gridded observations, IMDAA reanalysis), so do not call them synthetic. ` +
     `In 90–130 words, as one paragraph: say what was forecast versus observed and whether it was a bust; ` +
     `say whether the predicted risk anticipated it and which drivers or flags pointed to it (or that the risk was low if it was missed); ` +
     `and, if reanalysis evidence is given, explain the weather that actually occurred. If a temperature method note is given, mention it briefly.\n\n` +
@@ -153,9 +149,7 @@ async function callGemini(prompt) {
       },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        // Gemini 3 models "think" before answering and those tokens count
-        // against maxOutputTokens, so the budget must cover both. Length is
-        // controlled by the prompt (85–125 words), not by this cap.
+        // Thinking tokens count against maxOutputTokens; the prompt, not this cap, sets the length.
         generationConfig: { temperature: 0.2, maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: 'low' } },
       }),
       signal: AbortSignal.timeout(30_000),
@@ -242,7 +236,6 @@ function regionSummary(region, day, variable) {
   };
 }
 
-/** Read-only JSON API over the analysis engine. Returns null for unknown paths. */
 function handleAnalysisApi(url) {
   switch (url.pathname) {
     case '/api/confidence': {
@@ -322,39 +315,6 @@ function handleAnalysisApi(url) {
   }
 }
 
-function getDatasetStatus() {
-  if (!existsSync(datasetDirectory)) {
-    return {
-      available: false,
-      fileCount: 0,
-      initializations: [],
-      forecastDays: [],
-      variables: [],
-      observationDataAvailable: false,
-      readyForBustEvaluation: false,
-    };
-  }
-
-  const matches = readdirSync(datasetDirectory)
-    .map((file) => file.match(/^([A-Za-z0-9-]+)_IC(\d{8})_day(\d{2})\.nc$/))
-    .filter(Boolean);
-  const initializations = [...new Set(matches.map((match) => match[2]))]
-    .sort()
-    .map((date) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`);
-  const forecastDays = [...new Set(matches.map((match) => Number(match[3])))].sort((a, b) => a - b);
-  const variables = [...new Set(matches.map((match) => match[1]))];
-
-  return {
-    available: matches.length > 0,
-    fileCount: matches.length,
-    initializations,
-    forecastDays,
-    variables,
-    observationDataAvailable: false,
-    readyForBustEvaluation: false,
-  };
-}
-
 createServer(async (request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   if (request.method === 'POST' && url.pathname === '/api/gemini/case-briefing') {
@@ -377,10 +337,6 @@ createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, error.status || 400, { error: error.message || 'Unable to generate briefing.' });
     }
-    return;
-  }
-  if (request.method === 'GET' && url.pathname === '/api/dataset/status') {
-    sendJson(response, 200, getDatasetStatus());
     return;
   }
   if (request.method === 'GET' && url.pathname.startsWith('/api/')) {

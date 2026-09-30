@@ -1,5 +1,5 @@
 import type { ErrorMetrics, EvaluatedVariable, ForecastObservation } from '../types/index.ts';
-import { DEMO_FORECAST_OBSERVATIONS } from '../data/demoDataset.ts';
+import { SYNTHETIC_FORECAST_OBSERVATIONS } from '../data/syntheticArchive.ts';
 
 export const round = (value: number) => Math.round(value * 10) / 10;
 export const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -13,9 +13,7 @@ export function percentile(values: number[], p: number) {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
 }
 
-export function alignForecastsAndObservations(records = DEMO_FORECAST_OBSERVATIONS) {
-  // Each local record already contains the matched forecast/observation pair.
-  // This one clear boundary is where an API, CSV or NetCDF + observation join belongs.
+export function alignForecastsAndObservations(records = SYNTHETIC_FORECAST_OBSERVATIONS) {
   return records.filter((record) => record.forecastIssuedAt < record.validAt && record.leadDays > 0);
 }
 
@@ -39,18 +37,14 @@ export function calculateErrorMetrics(records: ForecastObservation[], variable: 
   };
 }
 
-/** Minimum absolute error that counts as a bust, so tiny errors in dry or
- * stable regions are never labelled as operational failures. */
+/** Floor so tiny errors in dry or stable regions never count as busts. */
 const MIN_BUST_ERROR: Record<EvaluatedVariable, number> = { rainfall: 15, temperature: 2 };
 
 const thresholdCache = new Map<string, number>();
 
-/** Leads that define "normal" short-range skill for the bust threshold. */
 export const REFERENCE_LEADS = 3;
 
-/** Regional bust threshold: the P90 absolute error of short-range (Day 1–3)
- * forecasts. A bust is an error larger than 90% of the model's short-range
- * errors in that region, so longer leads bust more often, as they do in practice. */
+/** P90 of Day 1–3 absolute errors; fixed across leads, so longer leads bust more often. */
 export function bustThreshold(region: string, variable: EvaluatedVariable) {
   const key = `${region}|${variable}`;
   const cached = thresholdCache.get(key);
@@ -69,7 +63,6 @@ export function isBust(record: ForecastObservation, variable: EvaluatedVariable)
 
 const bustFlags = new Map<EvaluatedVariable, { absErrors: Float64Array; busts: Uint8Array }>();
 
-/** Per-record absolute errors and bust labels, aligned with ALIGNED_RECORDS. */
 export function recordOutcomes(variable: EvaluatedVariable) {
   let outcomes = bustFlags.get(variable);
   if (!outcomes) {

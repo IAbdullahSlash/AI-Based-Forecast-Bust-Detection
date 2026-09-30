@@ -4,11 +4,7 @@ import { observedTmax, observedTmaxMonthly } from '../data/observations.ts';
 import { STATE_POSITIONS } from '../data/regions.ts';
 import { percentile, round } from './metrics.ts';
 
-// Real temperature verification. S2S has no 2 m temperature, so the forecast is
-// the 925 hPa temperature converted to a surface maximum-temperature forecast
-// with MOS (model output statistics): Tmax ≈ a_state + b · T925, where the
-// per-state offset a and the shared slope b are fitted on the OTHER runs only
-// (leave-one-run-out). Observations are IMD 1° gridded Tmax.
+// S2S has no 2 m temperature: MOS maps T925 to Tmax ≈ a_state + b·T925, fitted on the other runs only.
 
 interface NwpCell { mean: number; mslp?: number; t925?: number; t850?: number }
 interface NwpFile { initializations: Record<string, { days: number[]; regions: Record<string, NwpCell[]> }> }
@@ -49,7 +45,6 @@ const mean = (values: number[]) => (values.length ? values.reduce((s, v) => s + 
 
 interface Raw { region: string; initDate: string; validDate: string; leadDay: number; t925: number; t850: number | null; observed: number; rain: number; mslp: number | null }
 
-/** Fit Tmax ≈ a_state + b·T925 on training rows (within-state slope, pooled). */
 function fitMos(rows: Raw[]) {
   const byRegion = new Map<string, Raw[]>();
   rows.forEach((row) => byRegion.set(row.region, [...(byRegion.get(row.region) ?? []), row]));

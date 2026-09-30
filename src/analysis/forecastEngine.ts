@@ -10,7 +10,6 @@ import { getRealVerification } from './verification.ts';
 import { IMD_YEAR_LABEL, TMAX_YEARS, observedMonthly, observedTmaxMonthly } from '../data/observations.ts';
 import { getTempVerification } from './tempVerification.ts';
 
-export { alignForecastsAndObservations, calculateErrorMetrics } from './metrics.ts';
 export { getModelMetrics } from './model.ts';
 export { getActiveSystems, SCENARIO } from '../data/scenario.ts';
 export { getRealVerification } from './verification.ts';
@@ -19,7 +18,6 @@ export { IMD_NOTE, IMD_SOURCE, IMD_YEAR_LABEL, IMD_YEARS, monsoonAverages, obser
 export const DAYS = Array.from({ length: 10 }, (_, i) => i + 1);
 export const UNITS: Record<EvaluatedVariable, string> = { rainfall: 'mm', temperature: '°C' };
 const ANALOGUE_COUNT = 7;
-/** Blend weights: trained model vs. nearest-neighbour analogue bust rate. */
 const ML_WEIGHT = 0.6;
 
 export function confidenceFor(bustProbability: number): Confidence {
@@ -31,10 +29,6 @@ export function confidenceFor(bustProbability: number): Confidence {
 function forecastValue(fingerprint: ForecastFingerprint, variable: EvaluatedVariable) {
   return variable === 'rainfall' ? fingerprint.rainfall : fingerprint.temperature;
 }
-
-// ---------------------------------------------------------------------------
-// Analogue retrieval (k-nearest neighbours over forecast-time predictors)
-// ---------------------------------------------------------------------------
 
 interface ScoredAnalogue { analogue: HistoricalAnalogue; bust: boolean }
 
@@ -96,10 +90,6 @@ export function getAnalogueData(region: string, day = 5, variable: EvaluatedVari
   return scoredAnalogues(region, day, variable).map((item) => item.analogue);
 }
 
-// ---------------------------------------------------------------------------
-// Historical error behaviour by lead time
-// ---------------------------------------------------------------------------
-
 const leadCurveCache = new Map<string, LeadErrorPoint[]>();
 
 export function getLeadErrorCurve(region: string, variable: EvaluatedVariable = 'rainfall'): LeadErrorPoint[] {
@@ -120,10 +110,6 @@ export function getLeadErrorCurve(region: string, variable: EvaluatedVariable = 
   leadCurveCache.set(key, curve);
   return curve;
 }
-
-// ---------------------------------------------------------------------------
-// Explainability: rule-based meteorological reasons
-// ---------------------------------------------------------------------------
 
 function rainfallCategory(mm: number) {
   // IMD 24 h rainfall intensity categories.
@@ -173,7 +159,6 @@ function meteorologicalReasons(
     reasons.push({ kind: 'intensity', text: `Strong winds of ${fingerprint.windSpeed} km/h indicate a vigorous, fast-changing circulation.` });
   }
 
-  // Evidence from real observations (IMD) and real forecast verification (NCMRWF vs IMD).
   if (variable === 'rainfall') {
     const june = observedMonthly(region, 6);
     const years = IMD_YEAR_LABEL;
@@ -221,10 +206,6 @@ function meteorologicalReasons(
   }
   return reasons;
 }
-
-// ---------------------------------------------------------------------------
-// Regional result
-// ---------------------------------------------------------------------------
 
 const regionCache = new Map<string, RegionalData>();
 
@@ -290,10 +271,6 @@ export function getExplanation(region: string, day = 5, variable: EvaluatedVaria
     `A bust here means an absolute error ≥ ${data.bustThreshold} ${data.unit} (P90 of this region's Day 1–3 errors). This is a transparent calculation, not an LLM prediction.`;
 }
 
-// ---------------------------------------------------------------------------
-// Map, heatmap and error-prone area views
-// ---------------------------------------------------------------------------
-
 const byDayCache = new Map<EvaluatedVariable, ConfidenceByDay>();
 
 export function getConfidenceByDay(variable: EvaluatedVariable = 'rainfall'): ConfidenceByDay {
@@ -325,7 +302,6 @@ export function getSummaryStats(day = 5, variable: EvaluatedVariable = 'rainfall
   };
 }
 
-/** Regions where the model forecast is likely unreliable at one or more lead times. */
 export function getErrorProneRegions(variable: EvaluatedVariable = 'rainfall'): ErrorProneRegion[] {
   return STATE_POSITIONS
     .map((state) => {

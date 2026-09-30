@@ -1,12 +1,9 @@
 import type { EvaluatedVariable, EventType, ModelDriver, ModelMetrics } from '../types/index.ts';
 import { EVENT_TYPES, REGION_CLIMATOLOGY } from '../data/regions.ts';
-import { HINDCAST_YEARS } from '../data/demoDataset.ts';
+import { HINDCAST_YEARS } from '../data/syntheticArchive.ts';
 import { ALIGNED_RECORDS, recordOutcomes } from './metrics.ts';
 
-// L2-regularised logistic regression that learns P(bust) from forecast-time
-// predictors. Trained in-process on the hindcast archive; the latest year is
-// held out for verification. Small and dependency-free on purpose: the
-// coefficients are directly interpretable as meteorological drivers.
+// L2 logistic regression on the synthetic archive; the latest year is held out.
 
 export interface ModelInput {
   region: string;

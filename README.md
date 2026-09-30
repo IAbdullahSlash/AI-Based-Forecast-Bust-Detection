@@ -20,7 +20,6 @@
 | `GET /api/error-prone?variable=rainfall` | Regions with at least one low-confidence day |
 | `GET /api/model` | Verification metrics for both bust models |
 | `GET /api/nwp` | Per-state rainfall extracted from the NCMRWF NetCDF files |
-| `GET /api/dataset/status` | Catalogue of `dataset/*.nc` files |
 | `POST /api/gemini/explanation` | Gemini briefing (needs `GEMINI_API_KEY`) |
 
 The server imports the same TypeScript engine as the dashboard, so it needs Node ≥ 22.18, which runs `.ts` files through type stripping.
@@ -35,11 +34,11 @@ The server imports the same TypeScript engine as the dashboard, so it needs Node
 - A **real bust model** is trained on these pairs and scored leave-one-run-out: held-out AUC 0.75, 17% Brier skill. Forecast rainfall alone reaches 0.78, so more runs are needed to show the extra predictors add ranking skill (`/api/real-model`).
 - IMD June normals replace the hand-set rainfall climatology, and the explanation engine cites observed percentiles and each state's real error record.
 - `dataset/IMDAA/`: NCMRWF IMDAA reanalysis (850/200 hPa temperature and wind, 3-hourly, 1–10 June and 1–10 July 2015). Extract with `npm run extract:imdaa`. It powers the **real case studies** (Scenario switch → Jun 2015 / Jul 2015): real busts by state and day, weather systems diagnosed from the reanalysis (e.g. Cyclone Ashobaa, 6–10 June 2015), and a check of whether rule-based risk flags anticipated the busts. Also served at `/api/case`.
-- Still synthetic: the 6,000-pair training archive and the 10-day demo scenario. Replacing them needs more NCMRWF runs (ideally daily initialisations over several monsoons) paired the same way.
+- Still synthetic: the 6,000-pair training archive and the 10-day synthetic scenario. Replacing them needs more NCMRWF runs (ideally daily initialisations over several monsoons) paired the same way.
 
 ## India map
 
-State boundaries come from [udit-001/india-maps-data](https://github.com/udit-001/india-maps-data), which follows the official Indian boundary. `scripts/build-map.mjs` reduces them to a small state-level TopoJSON bundled with the app, so no map API or key is needed and the demo works offline.
+State boundaries come from [udit-001/india-maps-data](https://github.com/udit-001/india-maps-data), which follows the official Indian boundary. `scripts/build-map.mjs` reduces them to a small state-level TopoJSON bundled with the app, so no map API or key is needed and the app works offline.
 
 ## Gemini evidence briefings
 
@@ -47,7 +46,7 @@ The Gemini key is read only by `server.mjs`; never rename it to a `VITE_` variab
 
 ## NetCDF forecast ingestion
 
-Place forecast NetCDF files in `dataset/` using the naming pattern `<variable>_ICYYYYMMDD_dayNN.nc`, such as `APCP-sfc_IC20150601_day05.nc`. `/api/dataset/status` lists them. `npm run extract:nwp` (needs `pip install h5py numpy`) averages each state's grid points within ±1° into `src/data/nwpForecasts.json`, and the dashboard shows the result in the **Real NWP ingestion** panel. The next step is pairing these forecasts with IMD gridded observations for the same valid dates. Each pair becomes a row of the hindcast archive in place of the synthetic records in `src/data/demoDataset.ts`.
+Put NCMRWF S2S files in `dataset/s2s/` (`<variable>_ICYYYYMMDD_dayNN.nc`, e.g. `APCP-sfc_IC20150601_day05.nc`) and run `npm run extract:nwp` (needs `pip install h5py numpy`). It writes state means over each state's boundary mask to `src/data/nwpForecasts.json`, which the verification, bust model and case studies read. The raw `dataset/` folder is not needed at runtime.
 
 A real-time dashboard for monitoring **forecast confidence** and **bust probability** across Indian states — built with React, TypeScript, Tailwind CSS, and Vite.
 
@@ -70,7 +69,7 @@ This application helps meteorologists and analysts identify regions where weathe
 
 ### Header
 - App title with rain icon
-- Demo mode badge
+- Synthetic-data badge
 - Current date
 
 ### Variable Selector
@@ -114,19 +113,16 @@ This application helps meteorologists and analysts identify regions where weathe
 
 ```
 src/
-├── api/
-│   └── weatherApi.ts        # Open-Meteo API service + region coordinates
-├── components/
-│   └── IndiaMap.tsx         # Interactive zoomable/pannable SVG map
-├── data/
-│   └── mockData.ts          # Mock regional data, confidence engine, analogues
-├── hooks/
-│   └── useWeatherData.ts    # React hooks for weather data fetching
-├── types/
-│   └── index.ts             # TypeScript types (Confidence, RegionalData, etc.)
-├── App.tsx                  # Main application layout
-├── main.tsx                 # Entry point
-└── index.css                # Global styles + Tailwind imports
+├── analysis/     # engine shared by browser and server: verification, bust models, case studies
+├── api/          # Gemini and Open-Meteo clients
+├── components/   # IndiaMap, CaseStudy, Insights, RealData
+├── data/         # extracted real data (JSON), regions, synthetic scenario and archive
+├── hooks/        # useWeatherData
+├── types/        # shared TypeScript types
+├── App.tsx       # layout, controls, region detail panel
+└── theme.ts      # shared risk colours
+server.mjs        # dependency-free API + static server
+scripts/          # Python extractors (NetCDF/GRD → JSON) and map builder
 ```
 
 ---
@@ -148,12 +144,11 @@ src/
 **Open-Meteo** (`https://api.open-meteo.com/v1/forecast`)
 
 - Free, no API key required
-- Provides: temperature, precipitation, wind speed, pressure, humidity
+- Provides: temperature, precipitation, wind speed, pressure
 - Coverage: All 25 Indian states with precise lat/lng
 - Configurable via `.env`: `VITE_WEATHER_API_URL`
 
-### Region Coordinates
-Each state has approximate lat/lng in `src/api/weatherApi.ts` (`REGION_COORDINATES`).
+State coordinates come from `STATE_POSITIONS` in `src/data/regions.ts`.
 
 ---
 

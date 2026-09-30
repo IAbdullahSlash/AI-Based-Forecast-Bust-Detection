@@ -1,11 +1,7 @@
 import type { EventType, ForecastObservation } from '../types/index.ts';
 import { EVENT_PROFILES, REGION_CLIMATOLOGY, STATE_POSITIONS, wetness } from './regions.ts';
 
-// Synthetic, deterministic hindcast archive for the prototype. Each case is one
-// weather event in one region, forecast at lead times Day 1–10 and paired with
-// the "observed" value. Error growth with lead time and regime is modelled on
-// published NWP verification behaviour, but these are NOT IMD observations and
-// must be replaced before making operational claims.
+// Seeded synthetic archive: one event per region, forecast at Day 1–10. Not IMD observations.
 
 export const HINDCAST_YEARS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023];
 const EVENTS_PER_REGION_YEAR = 3;
@@ -57,7 +53,6 @@ function generate(): ForecastObservation[] {
       for (let event = 0; event < EVENTS_PER_REGION_YEAR; event += 1) {
         const eventType = pickWeighted<EventType>(climate.events, random);
         const profile = EVENT_PROFILES[eventType];
-        // Monsoon-season valid date (mid-May to end of September).
         const validDay = 135 + Math.floor(random() * 135);
         const strength = 0.6 + random() * 0.8;
 
@@ -85,7 +80,6 @@ function generate(): ForecastObservation[] {
             rainfallObserved: round1(rainfallObserved),
             temperatureForecast: round1(temperatureForecast),
             temperatureObserved: round1(temperatureObserved),
-            // Forecast-time predictors carry a little lead-dependent noise too.
             windSpeed: round1(Math.max(2, windSpeed + gaussian(random) * 0.4 * lead)),
             pressure: round1(pressure + gaussian(random) * 0.3 * lead),
             pressureTendency: round1(tendency + gaussian(random) * 0.2 * lead),
@@ -97,4 +91,4 @@ function generate(): ForecastObservation[] {
   return records;
 }
 
-export const DEMO_FORECAST_OBSERVATIONS: ForecastObservation[] = generate();
+export const SYNTHETIC_FORECAST_OBSERVATIONS: ForecastObservation[] = generate();

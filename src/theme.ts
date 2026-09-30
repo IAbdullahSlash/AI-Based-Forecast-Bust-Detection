@@ -56,7 +56,6 @@ export function bustColor(probability: number) {
   return `rgb(${last[0]}, ${last[1]}, ${last[2]})`;
 }
 
-/** Readable text color on top of a bust-probability fill. */
 export function bustTextColor(probability: number) {
   if (darkMode) return '#f1f5f9';
   return probability >= 40 ? '#ffffff' : '#1e293b';

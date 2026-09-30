@@ -1,9 +1,6 @@
 import imd from './imdObservations.json' with { type: 'json' };
 import tmax from './imdTmax.json' with { type: 'json' };
 
-// Real IMD 0.25° gridded daily rainfall, aggregated to state area means by
-// scripts/extract_imd.py. Regenerate with `npm run extract:imd` after adding
-// dataset/IMD/RF25_ind<YEAR>_rfp25.nc files.
 
 export interface MonthlyRainfall { mean: number; p95: number; p99: number }
 
@@ -59,14 +56,8 @@ export function observedMonthly(region: string, month: number): MonthlyRainfall 
   return DATA.summary[region]?.monthly[month - 1] ?? null;
 }
 
-export function observedSeries(region: string, year: string) {
-  const entry = DATA.years[year];
-  return entry ? { start: entry.start, values: entry.regions[region] ?? [] } : null;
-}
-
 const average = (values: number[]) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
 
-/** Per-year averages of the monsoon statistics, for compact display. */
 export function monsoonAverages(region: string) {
   const summary = DATA.summary[region];
   if (!summary) return null;
@@ -77,9 +68,6 @@ export function monsoonAverages(region: string) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// IMD 1° gridded daily maximum temperature (scripts/extract_imd_tmax.py)
-// ---------------------------------------------------------------------------
 
 
 interface TmaxFile {
@@ -91,7 +79,6 @@ interface TmaxFile {
 
 const TMAX = tmax as TmaxFile;
 
-export const TMAX_SOURCE = TMAX.source;
 export const TMAX_YEARS = Object.keys(TMAX.years).sort();
 
 /** Observed state-mean maximum temperature (°C) on an ISO date, or null. */

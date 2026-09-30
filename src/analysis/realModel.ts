@@ -1,11 +1,7 @@
 import { getRealVerification, type RealPair } from './verification.ts';
 import { getTempVerification, type TempPair } from './tempVerification.ts';
 
-// Bust models trained on REAL NCMRWF S2S forecasts verified against IMD
-// (rainfall and maximum temperature). Evaluated with leave-one-run-out
-// cross-validation: each run's probabilities come from a model fitted on the
-// other runs only, so case-study predictions are genuinely out of sample.
-// Features use forecast-time information only.
+// Scored leave-one-run-out, so each run's probabilities come from a model that never saw it.
 
 /** Steep terrain where grid-scale models under-resolve orographic rain (a priori). */
 export const OROGRAPHIC = new Set([

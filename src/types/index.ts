@@ -27,11 +27,9 @@ export interface RegionClimatology {
   temperature: number;
   windSpeed: number;
   pressure: number;
-  /** Historical regimes seen in this region, with relative frequency weights. */
   events: Partial<Record<EventType, number>>;
 }
 
-/** The meteorological state of a forecast at one region and lead time. */
 export interface ForecastFingerprint {
   rainfall: number;
   temperature: number;
@@ -101,9 +99,6 @@ export interface SummaryStats {
   lowConfidence: number;
 }
 
-/** A forecast paired with the observation that became available later.
- * The demo records are synthetic so the analytical flow works without
- * external data access. Replace them with archived NWP + observation feeds. */
 export interface ForecastObservation {
   region: string;
   forecastIssuedAt: string;
