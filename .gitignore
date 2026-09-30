@@ -48,3 +48,6 @@ __pycache__/
 
 # Dataset
 dataset/
+
+# Launch video
+brag-output*/

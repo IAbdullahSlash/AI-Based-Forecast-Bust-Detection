@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Gemini Case Briefing Sequence",
+    "viewBox": [1000, 560],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "Forecaster", "sublabel": "clicks Generate" },
+    { "id": "ui", "type": "frontend", "label": "CaseStudy.tsx", "sublabel": "geminiApi.ts" },
+    { "id": "server", "type": "backend", "label": "server.mjs", "sublabel": "createCasePrompt" },
+    { "id": "engine", "type": "database", "label": "caseStudy.ts", "sublabel": "shared engine" },
+    { "id": "gemini", "type": "cloud", "label": "Gemini", "sublabel": "3.5-flash" }
+  ],
+  "segments": [
+    { "from": 150, "to": 225, "label": "Request (ids only)" },
+    { "from": 235, "to": 320, "label": "Evidence rebuilt server-side" },
+    { "from": 330, "to": 440, "label": "Narrate + return" }
+  ],
+  "messages": [
+    { "id": "click", "from": "user", "to": "ui", "y": 170, "label": "Generate briefing" },
+    { "id": "post", "from": "ui", "to": "server", "y": 205, "label": "caseId, day, region, variable", "variant": "emphasis" },
+    { "id": "rebuild", "from": "server", "to": "engine", "y": 250, "label": "validate + getCaseDay()" },
+    { "id": "cell", "from": "engine", "to": "server", "y": 290, "label": "cell, flags, IMDAA, record", "variant": "return" },
+    { "id": "prompt", "from": "server", "to": "gemini", "y": 345, "label": "evidence-only prompt", "variant": "security" },
+    { "id": "text", "from": "gemini", "to": "server", "y": 375, "label": "text, thoughts filtered", "variant": "return" },
+    { "id": "json", "from": "server", "to": "ui", "y": 405, "label": "{ explanation }", "variant": "return" },
+    { "id": "show", "from": "ui", "to": "user", "y": 430, "label": "90–130 word paragraph", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "ui", "from": 165, "to": 436, "type": "frontend" },
+    { "participant": "server", "from": 200, "to": 411, "type": "backend" },
+    { "participant": "engine", "from": 245, "to": 296, "type": "database" },
+    { "participant": "gemini", "from": 340, "to": 381, "type": "cloud" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Prompt safety", "items": ["Client sends identifiers, never text", "Unknown case / region / day → 400"] },
+    { "dot": "amber", "title": "Model config", "items": ["temperature 0.2, thinkingLevel low", "8192 max tokens; MAX_TOKENS → 502"] },
+    { "dot": "emerald", "title": "Numbers stay put", "items": ["Gemini may explain, never compute", "Key read only by server.mjs"] }
+  ]
+}

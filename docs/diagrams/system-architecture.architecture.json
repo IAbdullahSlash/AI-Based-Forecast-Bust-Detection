@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Forecast Bust Detection · System Architecture",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Forecaster",
+      "sublabel": "browser",
+      "pos": [
+        40,
+        250
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "React Dashboard",
+      "sublabel": "Vite bundle :5173",
+      "pos": [
+        240,
+        250
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "App.tsx"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "server.mjs",
+      "sublabel": "Node API :8787",
+      "pos": [
+        490,
+        70
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "no dependencies"
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Shared TS Engine",
+      "sublabel": "src/analysis",
+      "pos": [
+        490,
+        250
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "memoised"
+    },
+    {
+      "id": "real",
+      "type": "database",
+      "label": "Real Data JSON",
+      "sublabel": "NCMRWF · IMD · IMDAA",
+      "pos": [
+        760,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "synthetic",
+      "type": "database",
+      "label": "Synthetic Archive",
+      "sublabel": "6,000 pairs + scenario",
+      "pos": [
+        760,
+        340
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "gemini",
+      "type": "cloud",
+      "label": "Gemini API",
+      "sublabel": "gemini-3.5-flash",
+      "pos": [
+        760,
+        70
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "meteo",
+      "type": "external",
+      "label": "Open-Meteo",
+      "sublabel": "live display only",
+      "pos": [
+        240,
+        420
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Runs offline · same code in browser and Node",
+      "wraps": [
+        "dashboard",
+        "engine",
+        "real",
+        "synthetic"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "GEMINI_API_KEY lives here only",
+      "wraps": [
+        "server"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "use-ui",
+      "from": "user",
+      "to": "dashboard",
+      "variant": "emphasis"
+    },
+    {
+      "id": "in-bundle",
+      "from": "dashboard",
+      "to": "engine",
+      "label": "in-bundle calls",
+      "variant": "emphasis"
+    },
+    {
+      "id": "briefing-post",
+      "from": "dashboard",
+      "to": "server",
+      "label": "POST /api/gemini",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "type-strip",
+      "from": "server",
+      "to": "engine",
+      "label": "imports .ts",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        612,
+        176
+      ]
+    },
+    {
+      "id": "llm-call",
+      "from": "server",
+      "to": "gemini",
+      "label": "generateContent",
+      "variant": "security"
+    },
+    {
+      "id": "read-real",
+      "from": "engine",
+      "to": "real",
+      "label": "JSON import"
+    },
+    {
+      "id": "read-synth",
+      "from": "engine",
+      "to": "synthetic",
+      "label": "seeded"
+    },
+    {
+      "id": "live-wx",
+      "from": "dashboard",
+      "to": "meteo",
+      "label": "fetch",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "One engine, two hosts",
+      "items": [
+        "Browser bundle calls src/analysis directly",
+        "server.mjs imports the same .ts files (Node ≥ 22.18)"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Data",
+      "items": [
+        "Real: NCMRWF S2S forecasts, IMD rain + Tmax, IMDAA",
+        "Synthetic: training archive and Jun 2026 scenario"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "LLM boundary",
+      "items": [
+        "Gemini only narrates computed numbers",
+        "Case briefings rebuild evidence server-side"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Real Data Pipeline",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1072,
+      640
+    ]
+  },
+  "stages": [
+    {
+      "label": "Raw datasets"
+    },
+    {
+      "label": "Extract (Python)"
+    },
+    {
+      "label": "Verify (join on state + date)"
+    },
+    {
+      "label": "Model"
+    },
+    {
+      "label": "Consume"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "imd",
+      "type": "external",
+      "label": "IMD Rainfall",
+      "sublabel": "0.25° .nc",
+      "stage": 0,
+      "row": 0,
+      "tag": "observed",
+      "height": 64,
+      "yOffset": -7
+    },
+    {
+      "id": "s2s",
+      "type": "external",
+      "label": "NCMRWF S2S",
+      "sublabel": "4 runs · day00–10",
+      "stage": 0,
+      "row": 1,
+      "tag": "forecast",
+      "height": 64
+    },
+    {
+      "id": "tmax",
+      "type": "external",
+      "label": "IMD Tmax",
+      "sublabel": "1° .GRD",
+      "stage": 0,
+      "row": 2,
+      "tag": "observed",
+      "height": 64,
+      "yOffset": 7
+    },
+    {
+      "id": "imdaa",
+      "type": "external",
+      "label": "IMDAA",
+      "sublabel": "850/200 hPa",
+      "stage": 0,
+      "row": 3,
+      "tag": "reanalysis",
+      "height": 64
+    },
+    {
+      "id": "obsjson",
+      "type": "database",
+      "label": "imdObservations",
+      "sublabel": ".json",
+      "stage": 1,
+      "row": 0,
+      "height": 64,
+      "tag": "state means",
+      "yOffset": -7
+    },
+    {
+      "id": "nwpjson",
+      "type": "database",
+      "label": "nwpForecasts",
+      "sublabel": ".json",
+      "stage": 1,
+      "row": 1,
+      "height": 64,
+      "tag": "state means"
+    },
+    {
+      "id": "tmaxjson",
+      "type": "database",
+      "label": "imdTmax",
+      "sublabel": ".json",
+      "stage": 1,
+      "row": 2,
+      "height": 64,
+      "tag": "state means",
+      "yOffset": 7
+    },
+    {
+      "id": "imdaajson",
+      "type": "database",
+      "label": "imdaaAnalysis",
+      "sublabel": ".json",
+      "stage": 1,
+      "row": 3,
+      "height": 64,
+      "tag": "state means"
+    },
+    {
+      "id": "rainver",
+      "type": "backend",
+      "label": "Rain verification",
+      "sublabel": "1,100 pairs",
+      "stage": 2,
+      "row": 0,
+      "tag": "P90 bust",
+      "height": 64
+    },
+    {
+      "id": "tempver",
+      "type": "backend",
+      "label": "Tmax verification",
+      "sublabel": "MOS · 1,000 pairs",
+      "stage": 2,
+      "row": 2,
+      "tag": "P90 bust",
+      "height": 64
+    },
+    {
+      "id": "realmodel",
+      "type": "backend",
+      "label": "Real bust model",
+      "sublabel": "logistic · LORO",
+      "stage": 3,
+      "row": 1,
+      "tag": "out-of-fold",
+      "height": 64
+    },
+    {
+      "id": "cases",
+      "type": "frontend",
+      "label": "Case studies",
+      "sublabel": "Jun–Sep 2015",
+      "stage": 4,
+      "row": 1,
+      "tag": "hit / miss",
+      "height": 64
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-imd",
+      "from": "imd",
+      "to": "obsjson",
+      "label": "extract_imd",
+      "variant": "default"
+    },
+    {
+      "id": "f-s2s",
+      "from": "s2s",
+      "to": "nwpjson",
+      "label": "extract_nwp",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-tmax",
+      "from": "tmax",
+      "to": "tmaxjson",
+      "label": "extract_tmax",
+      "variant": "default"
+    },
+    {
+      "id": "f-imdaa",
+      "from": "imdaa",
+      "to": "imdaajson",
+      "label": "extract_imdaa",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-obs-rain",
+      "from": "obsjson",
+      "to": "rainver",
+      "label": "observed rain"
+    },
+    {
+      "id": "f-nwp-rain",
+      "from": "nwpjson",
+      "to": "rainver",
+      "label": "rain + MSLP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-nwp-temp",
+      "from": "nwpjson",
+      "to": "tempver",
+      "label": "925 hPa T",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-tmax-temp",
+      "from": "tmaxjson",
+      "to": "tempver",
+      "label": "observed Tmax",
+      "labelDy": 18
+    },
+    {
+      "id": "f-rain-model",
+      "from": "rainver",
+      "to": "realmodel",
+      "label": "rain pairs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-temp-model",
+      "from": "tempver",
+      "to": "realmodel",
+      "label": "temp pairs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-model-cases",
+      "from": "realmodel",
+      "to": "cases",
+      "label": "risk %",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-imdaa-cases",
+      "from": "imdaajson",
+      "to": "cases",
+      "label": "explains outcome only",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "route": "bottom-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Same state masks",
+      "items": [
+        "Every extractor averages over state_masks.py boundaries",
+        "Tiny states fall back to the nearest grid cell"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Join rule",
+      "items": [
+        "File dayNN of run D matches IMD date D + NN",
+        "Bust = |error| above the pooled P90 threshold"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "No leakage",
+      "items": [
+        "Model scored leave-one-run-out",
+        "IMDAA describes what happened; never a predictor"
+      ]
+    }
+  ]
+}
