@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CloudLightning, Crosshair, MapPin, Target, Wind, X } from 'lucide-react';
 import {
-  CASES, IMDAA_SOURCE, getCaseBasinSystems, getCaseCells, getCaseDay, getCaseEvaluation, reanalysisAvailable, reanalysisCovers,
-  type CaseCell, type CaseId, type Outcome,
+  CASES, IMDAA_SOURCE, caseBustThreshold, getCaseBasinSystems, getCaseCells, getCaseDay, getCaseEvaluation, reanalysisAvailable, reanalysisCovers,
+  type CaseCell, type CaseId, type CaseVariable, type Outcome,
 } from '../analysis/caseStudy';
 import { getRealVerification } from '../analysis/verification';
 import { CONFIDENCE_COLORS, confidenceColor } from '../theme';
@@ -25,6 +25,12 @@ function errorFill(error: number | null, threshold: number) {
   return `rgba(${rgb}, ${0.12 + strength * 0.85})`;
 }
 
+function temperatureFill(celsius: number | null) {
+  if (celsius === null) return 'var(--map-unanalysed)';
+  const t = Math.min(1, Math.max(0, (celsius - 24) / 20));
+  return `rgba(234, 88, 12, ${0.12 + t * 0.85})`;
+}
+
 function rainFill(mm: number | null) {
   if (mm === null) return 'var(--map-unanalysed)';
   const t = Math.min(1, Math.sqrt(mm / 60));
@@ -37,19 +43,20 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return <><span>{label}</span><span className="text-right text-white font-medium">{value}</span></>;
 }
 
-export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectRegion }: {
-  caseId: CaseId; day: number; setDay: (day: number) => void;
+export function CaseStudyView({ caseId, variable, day, setDay, selectedRegion, onSelectRegion }: {
+  caseId: CaseId; variable: CaseVariable; day: number; setDay: (day: number) => void;
   selectedRegion: string | null; onSelectRegion: (region: string | null) => void;
 }) {
   const [mode, setMode] = useState<Mode>('outcome');
   const [hovered, setHovered] = useState<string | null>(null);
   const definition = CASES.find((c) => c.id === caseId)!;
-  const threshold = getRealVerification().bustThreshold;
-  const cells = useMemo(() => getCaseDay(caseId, day), [caseId, day]);
+  const threshold = caseBustThreshold(variable);
+  const unit = variable === 'temperature' ? '°C' : 'mm';
+  const cells = useMemo(() => getCaseDay(caseId, day, variable), [caseId, day, variable]);
   const byRegion = useMemo(() => Object.fromEntries(cells.map((cell) => [cell.region, cell])), [cells]);
   const date = cells[0]?.date ?? '';
   const hasForecast = cells.some((cell) => cell.forecast !== null);
-  const evaluation = useMemo(() => getCaseEvaluation(caseId), [caseId]);
+  const evaluation = useMemo(() => getCaseEvaluation(caseId, variable), [caseId, variable]);
   const basins = useMemo(() => getCaseBasinSystems(caseId), [caseId]);
   const hasReanalysis = reanalysisCovers(caseId);
 
@@ -69,10 +76,10 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
       if (!cell) return null;
       const fill = mode === 'outcome' ? OUTCOME_STYLE[cell.outcome].color
         : mode === 'risk' ? confidenceColor(cell.risk)
-        : mode === 'error' ? errorFill(cell.error, threshold) : rainFill(cell.observed);
+        : mode === 'error' ? errorFill(cell.error, threshold) : variable === 'temperature' ? temperatureFill(cell.observed) : rainFill(cell.observed);
       return {
         fill,
-        textColor: mode === 'observed' && (cell.observed ?? 0) < 8 ? '#1e3a8a' : '#ffffff',
+        textColor: mode === 'observed' && (variable === 'temperature' ? (cell.observed ?? 0) < 32 : (cell.observed ?? 0) < 8) ? '#1e293b' : '#ffffff',
         tooltip: (
           <>
             <div className="flex items-center justify-between mb-1 gap-2">
@@ -83,9 +90,9 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
             </div>
             {cell.signals[0] && <div className="text-[10px] text-sky-300 mb-1.5 leading-snug">{cell.signals[0].label}</div>}
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-slate-300">
-              <Row label="Forecast" value={cell.forecast === null ? '—' : `${cell.forecast} mm`} />
-              <Row label="Observed" value={cell.observed === null ? '—' : `${cell.observed} mm`} />
-              <Row label="Error" value={cell.error === null ? '—' : `${cell.error > 0 ? '+' : ''}${cell.error} mm`} />
+              <Row label="Forecast" value={cell.forecast === null ? '—' : `${cell.forecast} ${unit}`} />
+              <Row label="Observed" value={cell.observed === null ? '—' : `${cell.observed} ${unit}`} />
+              <Row label="Error" value={cell.error === null ? '—' : `${cell.error > 0 ? '+' : ''}${cell.error} ${unit}`} />
               <Row label="Bust probability" value={cell.probability === null ? '—' : `${cell.probability}% · ${RISK_LABEL[cell.risk]}`} />
             </div>
           </>
@@ -108,12 +115,12 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
     ) : mode === 'error' ? (
       <div className="text-[10px] text-slate-500">
         <div className="w-44 h-2 rounded-full" style={{ background: 'linear-gradient(90deg, rgb(225,29,72), rgba(148,163,184,0.2), rgb(2,132,199))' }} />
-        <div className="flex justify-between mt-1"><span>Under-forecast</span><span>Over</span></div>
+        <div className="flex justify-between mt-1"><span>{variable === 'temperature' ? 'Too cold' : 'Under-forecast'}</span><span>{variable === 'temperature' ? 'Too warm' : 'Over'}</span></div>
       </div>
     ) : (
       <div className="text-[10px] text-slate-500">
-        <div className="w-44 h-2 rounded-full" style={{ background: 'linear-gradient(90deg, rgba(37,99,235,0.1), rgb(37,99,235))' }} />
-        <div className="flex justify-between mt-1"><span>0 mm</span><span>60+ mm</span></div>
+        <div className="w-44 h-2 rounded-full" style={{ background: variable === 'temperature' ? 'linear-gradient(90deg, rgba(234,88,12,0.12), rgb(234,88,12))' : 'linear-gradient(90deg, rgba(37,99,235,0.1), rgb(37,99,235))' }} />
+        <div className="flex justify-between mt-1">{variable === 'temperature' ? <><span>24 °C</span><span>44+ °C</span></> : <><span>0 mm</span><span>60+ mm</span></>}</div>
       </div>
     ),
   };
@@ -136,6 +143,7 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
               against IMD gridded rainfall for all ten days. Day <i>n</i> = {definition.run} + (n − 1). Predicted risk comes from a bust
               model trained on the other runs only, so it never saw this case.
               {hasReanalysis ? ' IMDAA reanalysis shows what the weather actually did.' : ' IMDAA reanalysis was not downloaded for this month.'}
+              {variable === 'temperature' && ' Temperature: S2S has no 2 m temperature, so the 925 hPa forecast is corrected to surface Tmax with MOS fitted on the other runs, and verified against IMD 1° gridded Tmax.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -150,9 +158,9 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: `Real busts · Day ${day}`, value: hasForecast ? busts.length : '—', sub: hasForecast ? `|error| ≥ ${threshold} mm` : 'No forecast at this lead', icon: <AlertTriangle size={18} />, tint: 'bg-rose-50 text-rose-600' },
+          { label: `Real busts · Day ${day}`, value: hasForecast ? busts.length : '—', sub: hasForecast ? `|error| ≥ ${threshold} ${unit}` : 'No forecast at this lead (temperature starts at day01)', icon: <AlertTriangle size={18} />, tint: 'bg-rose-50 text-rose-600' },
           { label: 'Predicted high risk', value: highRisk.length, sub: 'Bust probability ≥ 30%, before outcome', icon: <Crosshair size={18} />, tint: 'bg-amber-50 text-amber-600' },
-          { label: `Mean abs. error · Day ${day}`, value: mae === null ? '—' : `${mae}`, sub: 'mm, state means', icon: <Target size={18} />, tint: 'bg-sky-50 text-sky-600' },
+          { label: `Mean abs. error · Day ${day}`, value: mae === null ? '—' : `${mae}`, sub: `${unit}, state means`, icon: <Target size={18} />, tint: 'bg-sky-50 text-sky-600' },
           { label: 'Busts anticipated (case)', value: `${evaluation.caught}/${evaluation.busts}`, sub: `${evaluation.hitRate}% flagged elevated or high risk`, icon: <CheckCircle2 size={18} />, tint: 'bg-emerald-50 text-emerald-600' },
         ].map((card) => (
           <div key={card.label} className="card p-4">
@@ -168,7 +176,7 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
         ))}
       </div>
 
-      <CaseTimeline caseId={caseId} day={day} setDay={setDay} showReanalysis={hasReanalysis} />
+      <CaseTimeline caseId={caseId} variable={variable} day={day} setDay={setDay} showReanalysis={hasReanalysis} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         <div className="lg:col-span-7 xl:col-span-8">
@@ -250,14 +258,20 @@ export function CaseStudyView({ caseId, day, setDay, selectedRegion, onSelectReg
             ))}
           </div>
           <p className="text-[11px] text-slate-500 mt-2">One 10-day case is a small sample; treat these numbers as indicative. The synthetic demo model is not used here.</p>
+          {variable === 'temperature' && caseId === '2015-06-01' && (
+            <p className="text-[11px] text-amber-700 mt-1">
+              June temperature busts are mostly a seasonal correction bias: the MOS correction was learned from July–September runs,
+              so the hot, dry June surface comes out about 2.7 °C too cold. More June runs (initialised 9, 17, 25) would remove it.
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function CaseTimeline({ caseId, day, setDay, showReanalysis }: { caseId: CaseId; day: number; setDay: (day: number) => void; showReanalysis: boolean }) {
-  const cells = getCaseCells(caseId);
+function CaseTimeline({ caseId, variable, day, setDay, showReanalysis }: { caseId: CaseId; variable: CaseVariable; day: number; setDay: (day: number) => void; showReanalysis: boolean }) {
+  const cells = getCaseCells(caseId, variable);
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between gap-2 mb-3">
@@ -297,8 +311,13 @@ function CaseTimeline({ caseId, day, setDay, showReanalysis }: { caseId: CaseId;
 }
 
 function CaseRegionPanel({ cell, caseId, threshold, hasReanalysis, onClose }: { cell: CaseCell; caseId: CaseId; threshold: number; hasReanalysis: boolean; onClose: () => void }) {
-  const series = getCaseCells(caseId).filter((item) => item.region === cell.region);
-  const max = Math.max(1, ...series.map((item) => Math.max(item.forecast ?? 0, item.observed ?? 0)));
+  const series = getCaseCells(caseId, cell.variable).filter((item) => item.region === cell.region);
+  const unit = cell.unit;
+  const values = series.flatMap((item) => [item.forecast, item.observed]).filter((v): v is number => v !== null);
+  // Rainfall bars start at 0; temperature bars start just below the coldest value so differences show.
+  const floor = cell.variable === 'temperature' && values.length ? Math.min(...values) - 2 : 0;
+  const max = Math.max(floor + 1, ...values);
+  const height = (value: number | null) => `${value === null ? 0 : ((value - floor) / (max - floor)) * 100}%`;
   const d = cell.diagnostics;
   const verdict = cell.outcome === 'bust'
     ? (cell.risk !== 'high' ? { text: 'Bust anticipated: elevated risk was predicted beforehand', tone: 'text-emerald-700 bg-emerald-50' } : { text: 'Missed bust: predicted risk was low', tone: 'text-rose-700 bg-rose-50' })
@@ -327,9 +346,9 @@ function CaseRegionPanel({ cell, caseId, threshold, hasReanalysis, onClose }: { 
       <div className="overflow-y-auto px-4 py-3 space-y-4">
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: 'Forecast', value: cell.forecast, unit: 'mm' },
-            { label: 'Observed', value: cell.observed, unit: 'mm' },
-            { label: 'Error', value: cell.error === null ? null : `${cell.error > 0 ? '+' : ''}${cell.error}`, unit: 'mm' },
+            { label: 'Forecast', value: cell.forecast, unit },
+            { label: 'Observed', value: cell.observed, unit },
+            { label: 'Error', value: cell.error === null ? null : `${cell.error > 0 ? '+' : ''}${cell.error}`, unit },
           ].map((item) => (
             <div key={item.label} className="bg-slate-50 rounded-lg px-2.5 py-2">
               <div className="text-[10px] font-medium text-slate-500">{item.label}</div>
@@ -350,14 +369,14 @@ function CaseRegionPanel({ cell, caseId, threshold, hasReanalysis, onClose }: { 
             {series.map((item) => (
               <div key={item.day} className={`flex-1 flex flex-col items-center gap-0.5 ${item.day === cell.day ? 'opacity-100' : 'opacity-75'}`}>
                 <div className="w-full flex items-end gap-px h-20">
-                  <div className="flex-1 rounded-t bg-sky-500" style={{ height: `${((item.forecast ?? 0) / max) * 100}%` }} title={`Forecast ${item.forecast ?? '—'} mm`} />
-                  <div className="flex-1 rounded-t bg-slate-400" style={{ height: `${((item.observed ?? 0) / max) * 100}%` }} title={`Observed ${item.observed ?? '—'} mm`} />
+                  <div className="flex-1 rounded-t bg-sky-500" style={{ height: height(item.forecast) }} title={`Forecast ${item.forecast ?? '—'} ${unit}`} />
+                  <div className="flex-1 rounded-t bg-slate-400" style={{ height: height(item.observed) }} title={`Observed ${item.observed ?? '—'} ${unit}`} />
                 </div>
                 <span className={`text-[9px] ${item.day === cell.day ? 'font-bold text-slate-900' : 'text-slate-500'} ${item.outcome === 'bust' ? 'text-rose-600' : ''}`}>D{item.day}</span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-slate-500 mt-1">Bust threshold ±{threshold} mm. Days without a blue bar have no forecast.</p>
+          <p className="text-[10px] text-slate-500 mt-1">Bust threshold ±{threshold} {unit}. Days without a blue bar have no forecast.</p>
         </div>
 
         {cell.drivers.length > 0 && (

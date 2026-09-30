@@ -10,7 +10,8 @@ import {
 } from './src/analysis/forecastEngine.ts';
 import { STATE_POSITIONS } from './src/data/regions.ts';
 import { CASES, getCaseBasinSystems, getCaseDay, getCaseEvaluation } from './src/analysis/caseStudy.ts';
-import { getRealModel } from './src/analysis/realModel.ts';
+import { getRealModel, getRealTempModel } from './src/analysis/realModel.ts';
+import { getTempVerification } from './src/analysis/tempVerification.ts';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const distDirectory = resolve(root, 'dist');
@@ -87,7 +88,57 @@ function createPrompt(evidence) {
     })}`;
 }
 
-async function generateExplanation(evidence) {
+/** Builds the case-study prompt from the server's own engine output, never from client text. */
+function createCasePrompt({ caseId, day, region, variable }) {
+  const definition = CASES.find((item) => item.id === caseId);
+  if (!definition) throw new Error('Unknown case.');
+  if (!Number.isInteger(day) || day < 1 || day > 10) throw new Error('day must be an integer from 1 to 10.');
+  if (!REGION_NAMES.has(region)) throw new Error('Unknown region.');
+  if (!EVALUATED_VARIABLES.includes(variable)) throw new Error('variable must be rainfall or temperature.');
+  const cell = getCaseDay(caseId, day, variable).find((item) => item.region === region);
+  if (!cell) throw new Error('No data for this state and day.');
+  if (cell.forecast === null) throw new Error('There is no forecast for this lead time, so there is nothing to brief.');
+
+  const verification = variable === 'temperature' ? getTempVerification() : getRealVerification();
+  const stateRecord = verification.byRegion.find((item) => item.region === region);
+  const riskLabel = { low: 'high risk', medium: 'elevated risk', high: 'low risk' }[cell.risk];
+  const basins = getCaseBasinSystems(caseId).filter((system) => system.day === day).map((system) => `${system.label}: ${system.detail}`);
+
+  const evidence = {
+    case: definition.label,
+    state: region,
+    validDate: cell.date,
+    dayOfForecast: day,
+    variable,
+    unit: cell.unit,
+    forecast: cell.forecast,
+    observed: cell.observed,
+    errorForecastMinusObserved: cell.error,
+    bustThresholdAbsError: verification.bustThreshold,
+    outcome: cell.outcome,
+    predictedBustProbabilityPercent: cell.probability,
+    predictedRisk: riskLabel,
+    modelDriversRaisingRisk: cell.drivers.map((driver) => driver.feature),
+    ruleFlagsKnownAtForecastTime: cell.flags.map((flag) => flag.label),
+    forecastSignals: cell.signals.filter((signal) => signal.kind === 'forecast' || signal.label === 'Forecast heat').map((signal) => `${signal.label}: ${signal.detail}`),
+    whatActuallyHappenedPerReanalysis: cell.signals.filter((signal) => signal.kind !== 'forecast' && signal.label !== 'Forecast heat').map((signal) => `${signal.label}: ${signal.detail}`),
+    basinSystemsThatDay: basins,
+    stateRecordAcrossAllRuns: stateRecord ? { pairs: stateRecord.pairs, meanAbsError: stateRecord.mae, bias: stateRecord.bias, busts: stateRecord.busts } : null,
+    temperatureMethodNote: variable === 'temperature'
+      ? 'Forecast temperature is the S2S 925 hPa temperature corrected to surface Tmax with MOS fitted on other runs.'
+      : null,
+  };
+
+  return `You are writing a concise post-event briefing for an operational forecaster reviewing a past forecast (hindcast).\n\n` +
+    `Use ONLY the evidence below. Do not calculate, change or invent any number or probability. ` +
+    `These are real archived data (NCMRWF S2S hindcast forecasts, IMD gridded observations, IMDAA reanalysis), so do not call them synthetic or a demo. ` +
+    `In 90–130 words, as one paragraph: say what was forecast versus observed and whether it was a bust; ` +
+    `say whether the predicted risk anticipated it and which drivers or flags pointed to it (or that the risk was low if it was missed); ` +
+    `and, if reanalysis evidence is given, explain the weather that actually occurred. If a temperature method note is given, mention it briefly.\n\n` +
+    `Evidence:\n${JSON.stringify(evidence)}`;
+}
+
+async function callGemini(prompt) {
   if (!process.env.GEMINI_API_KEY) {
     const error = new Error('GEMINI_API_KEY is not configured on the server.');
     error.status = 503;
@@ -103,7 +154,7 @@ async function generateExplanation(evidence) {
         'x-goog-api-key': process.env.GEMINI_API_KEY,
       },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: createPrompt(evidence) }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
         // Gemini 3 models "think" before answering and those tokens count
         // against maxOutputTokens, so the budget must cover both. Length is
         // controlled by the prompt (85–125 words), not by this cap.
@@ -227,18 +278,24 @@ function handleAnalysisApi(url) {
       const id = url.searchParams.get('id') ?? CASES[0]?.id;
       const definition = CASES.find((item) => item.id === id);
       if (!definition) throw new Error(`id must be one of: ${CASES.map((item) => item.id).join(', ')}.`);
-      const { day } = queryOptions(url);
+      const { day, variable } = queryOptions(url);
       return {
         case: definition,
         day,
-        cells: getCaseDay(definition.id, day),
+        variable,
+        cells: getCaseDay(definition.id, day, variable),
         basinSystems: getCaseBasinSystems(definition.id),
-        evaluation: getCaseEvaluation(definition.id),
+        evaluation: getCaseEvaluation(definition.id, variable),
       };
     }
     case '/api/real-model': {
-      const { outOfFold, ...summary } = getRealModel();
+      const variable = url.searchParams.get('variable') === 'temperature' ? 'temperature' : 'rainfall';
+      const { outOfFold, ...summary } = variable === 'temperature' ? getRealTempModel() : getRealModel();
       return summary;
+    }
+    case '/api/temperature-verification': {
+      const { pairs, ...summary } = getTempVerification();
+      return url.searchParams.get('pairs') === 'true' ? { ...summary, pairs } : { ...summary, pairCount: pairs.length };
     }
     case '/api/imd':
       return {
@@ -291,10 +348,22 @@ function getDatasetStatus() {
 
 createServer(async (request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  if (request.method === 'POST' && url.pathname === '/api/gemini/case-briefing') {
+    try {
+      const body = await readJson(request);
+      const explanation = await callGemini(createCasePrompt({
+        caseId: String(body.caseId ?? ''), day: Number(body.day), region: String(body.region ?? ''), variable: String(body.variable ?? 'rainfall'),
+      }));
+      sendJson(response, 200, { explanation });
+    } catch (error) {
+      sendJson(response, error.status || 400, { error: error.message || 'Unable to generate briefing.' });
+    }
+    return;
+  }
   if (request.method === 'POST' && url.pathname === '/api/gemini/explanation') {
     try {
       const body = await readJson(request);
-      const explanation = await generateExplanation(body.evidence);
+      const explanation = await callGemini(createPrompt(body.evidence));
       sendJson(response, 200, { explanation });
     } catch (error) {
       sendJson(response, error.status || 400, { error: error.message || 'Unable to generate briefing.' });

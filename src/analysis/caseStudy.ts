@@ -1,9 +1,10 @@
 import type { Confidence } from '../types/index.ts';
 import imdaa from '../data/imdaaAnalysis.json' with { type: 'json' };
-import { observedRainfall } from '../data/observations.ts';
+import { observedRainfall, observedTmax } from '../data/observations.ts';
 import { STATE_POSITIONS } from '../data/regions.ts';
 import { getRealVerification, type RealPair } from './verification.ts';
-import { OROGRAPHIC, REAL_FEATURES, auc, getRealModel } from './realModel.ts';
+import { OROGRAPHIC, REAL_FEATURES, TEMP_FEATURES, auc, getRealModel, getRealTempModel } from './realModel.ts';
+import { getTempVerification, type TempPair } from './tempVerification.ts';
 
 // Real case studies: each NCMRWF S2S run (dataset/s2s) verified against IMD.
 // Day d of a case is the date run + (d − 1) and uses forecast file day(d − 1).
@@ -12,6 +13,7 @@ import { OROGRAPHIC, REAL_FEATURES, auc, getRealModel } from './realModel.ts';
 // flags. IMDAA reanalysis, where available, explains what the weather actually did.
 
 export type CaseId = string;
+export type CaseVariable = 'rainfall' | 'temperature';
 export type Outcome = 'bust' | 'large' | 'ok' | 'no-forecast' | 'no-data';
 
 export interface CaseDefinition { id: CaseId; label: string; short: string; run: string }
@@ -48,6 +50,8 @@ export interface RiskFlag { label: string; weight: number }
 
 export interface CaseCell {
   region: string;
+  variable: CaseVariable;
+  unit: string;
   day: number;
   date: string;
   leadDay: number;
@@ -144,11 +148,79 @@ function forecastFlags(region: string, day: number, pair: RealPair | undefined):
   return flags;
 }
 
-const cache = new Map<CaseId, CaseCell[]>();
+/** Rule flags for temperature, from forecast-time information only. */
+function temperatureFlags(day: number, pair: TempPair | undefined): RiskFlag[] {
+  if (!pair) return [];
+  const flags: RiskFlag[] = [];
+  if (pair.normal !== null && Math.abs(pair.forecast - pair.normal) >= 4) {
+    flags.push({ label: `Forecast ${pair.forecast > pair.normal ? 'far above' : 'far below'} IMD normal (${pair.normal} °C)`, weight: 2 });
+  }
+  if (pair.p95 !== null && pair.forecast >= pair.p95) flags.push({ label: `Forecast ≥ observed P95 (${pair.p95} °C)`, weight: 1 });
+  if (pair.rainForecast >= 10) flags.push({ label: `Rain forecast ${pair.rainForecast} mm (cloud timing affects Tmax)`, weight: 1 });
+  if (pair.mslpAnomaly !== null && pair.mslpAnomaly <= -3) flags.push({ label: `Forecast low pressure (${pair.mslpAnomaly} hPa vs model normal)`, weight: 1 });
+  if (day >= 4) flags.push({ label: `Lead day ${day}`, weight: 1 });
+  return flags;
+}
 
-export function getCaseCells(id: CaseId): CaseCell[] {
-  const cached = cache.get(id);
+function temperatureCells(definition: CaseDefinition): CaseCell[] {
+  const month = Number(definition.run.slice(5, 7));
+  const verification = getTempVerification();
+  const model = getRealTempModel();
+  const pairs = new Map(verification.pairs
+    .filter((pair) => pair.initDate === definition.run)
+    .map((pair) => [`${pair.region}|${pair.leadDay}`, pair]));
+  const threshold = verification.bustThreshold;
+  const cells: CaseCell[] = [];
+  for (let day = 1; day <= 10; day += 1) {
+    const date = addDays(definition.run, day - 1);
+    const leadDay = day - 1;
+    const basins = basinSystems(date, day);
+    const reanalysisDay = REANALYSIS.days[date];
+    for (const { name } of STATE_POSITIONS) {
+      const pair = pairs.get(`${name}|${leadDay}`);
+      const error = pair ? pair.error : null;
+      const forecast = pair?.forecast ?? null;
+      const outcome: Outcome = error === null ? (forecast === null ? 'no-forecast' : 'no-data')
+        : Math.abs(error) >= threshold ? 'bust' : Math.abs(error) >= threshold * 0.6 ? 'large' : 'ok';
+      const prediction = pair ? model.outOfFold.get(pair) : undefined;
+      const probability = prediction ? Math.round(prediction.probability * 100) : null;
+      const diagnostics = reanalysisDay?.complete ? reanalysisDay.regions[name] ?? null : null;
+      const flags = temperatureFlags(day, pair);
+      const signals: Signal[] = [];
+      if (pair && pair.forecast >= 40) signals.push({ kind: 'heat', label: 'Forecast heat', detail: `Corrected forecast Tmax ${pair.forecast} °C` });
+      if (pair?.mslpAnomaly !== null && pair?.mslpAnomaly !== undefined && pair.mslpAnomaly <= -3) {
+        signals.push({ kind: 'forecast', label: 'Forecast low-pressure area', detail: `Forecast sea-level pressure ${Math.abs(pair.mslpAnomaly)} hPa below the model normal` });
+      }
+      signals.push(...observedSignals(name, diagnostics, basins, month));
+      cells.push({
+        region: name, variable: 'temperature', unit: '°C', day, date, leadDay, forecast,
+        observed: pair?.observed ?? observedTmax(name, date), error, outcome,
+        mslp: null, mslpAnomaly: pair?.mslpAnomaly ?? null, pressureTendency: null,
+        probability,
+        drivers: prediction
+          ? prediction.contributions.map((contribution, i) => ({ feature: TEMP_FEATURES[i], contribution: Math.round(contribution * 100) / 100 }))
+            .filter((driver) => driver.contribution >= 0.15).sort((a, b) => b.contribution - a.contribution).slice(0, 3)
+          : [],
+        diagnostics, signals, flags,
+        riskScore: flags.reduce((sum, flag) => sum + flag.weight, 0),
+        risk: probability === null ? 'high' : riskFromProbability(probability),
+      });
+    }
+  }
+  return cells;
+}
+
+const cache = new Map<string, CaseCell[]>();
+
+export function getCaseCells(id: CaseId, variable: CaseVariable = 'rainfall'): CaseCell[] {
+  const key = `${id}|${variable}`;
+  const cached = cache.get(key);
   if (cached) return cached;
+  if (variable === 'temperature') {
+    const cells = temperatureCells(CASES.find((c) => c.id === id)!);
+    cache.set(key, cells);
+    return cells;
+  }
   const definition = CASES.find((c) => c.id === id)!;
   const month = Number(definition.run.slice(5, 7));
   const verification = getRealVerification();
@@ -180,7 +252,7 @@ export function getCaseCells(id: CaseId): CaseCell[] {
       }
       signals.push(...observedSignals(name, diagnostics, basins, month));
       cells.push({
-        region: name, day, date, leadDay, forecast, observed, error, outcome,
+        region: name, variable: 'rainfall', unit: 'mm', day, date, leadDay, forecast, observed, error, outcome,
         mslp: pair?.mslp ?? null, mslpAnomaly: pair?.mslpAnomaly ?? null, pressureTendency: pair?.pressureTendency ?? null,
         probability,
         drivers: prediction
@@ -193,12 +265,16 @@ export function getCaseCells(id: CaseId): CaseCell[] {
       });
     }
   }
-  cache.set(id, cells);
+  cache.set(key, cells);
   return cells;
 }
 
-export function getCaseDay(id: CaseId, day: number) {
-  return getCaseCells(id).filter((cell) => cell.day === day);
+export function getCaseDay(id: CaseId, day: number, variable: CaseVariable = 'rainfall') {
+  return getCaseCells(id, variable).filter((cell) => cell.day === day);
+}
+
+export function caseBustThreshold(variable: CaseVariable) {
+  return variable === 'temperature' ? getTempVerification().bustThreshold : getRealVerification().bustThreshold;
 }
 
 export function getCaseBasinSystems(id: CaseId): BasinSystem[] {
@@ -216,8 +292,8 @@ export function reanalysisCovers(id: CaseId) {
 }
 
 /** How well the predicted risk anticipated the real busts in this case. */
-export function getCaseEvaluation(id: CaseId) {
-  const verified = getCaseCells(id).filter((cell) => cell.error !== null);
+export function getCaseEvaluation(id: CaseId, variable: CaseVariable = 'rainfall') {
+  const verified = getCaseCells(id, variable).filter((cell) => cell.error !== null);
   const labels = verified.map((cell) => (cell.outcome === 'bust' ? 1 : 0));
   const busts = verified.filter((cell) => cell.outcome === 'bust');
   const flagged = verified.filter((cell) => cell.risk !== 'high');

@@ -10,8 +10,9 @@ import {
   DAYS, getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
 } from './analysis/forecastEngine';
 import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard } from './components/Insights';
-import { NwpIngestionPanel, ObservedClimatologyPanel, RealModelCard, RealVerificationPanel } from './components/RealData';
+import { NwpIngestionPanel, ObservedClimatologyPanel, RealModelCard, RealVerificationPanel, TempVerificationPanel } from './components/RealData';
 import { IMD_YEAR_LABEL, IMD_YEARS, getRealVerification, monsoonAverages, observedMonthly, observedSummary } from './analysis/forecastEngine';
+import { hotDayAverage, observedTmaxMonthly } from './data/observations';
 import IndiaMap from './components/IndiaMap';
 import { CaseStudyView } from './components/CaseStudy';
 import { CASES, type CaseId } from './analysis/caseStudy';
@@ -247,6 +248,8 @@ function ObservedFacts({ region }: { region: string }) {
   const monsoon = monsoonAverages(region);
   const record = observedSummary(region)?.maxCellRain;
   const real = getRealVerification().byRegion.find((item) => item.region === region);
+  const juneTmax = observedTmaxMonthly(region, 6);
+  const hotDays = hotDayAverage(region);
   if (!june || !monsoon) return null;
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
@@ -256,6 +259,8 @@ function ObservedFacts({ region }: { region: string }) {
         <span>June P99 <b className="text-slate-800">{june.p99} mm</b></span>
         <span>Monsoon total <b className="text-slate-800">{monsoon.total} mm</b></span>
         <span>Heavy-rain days <b className="text-slate-800">{monsoon.widespreadHeavyDays}/season</b></span>
+        {juneTmax && <span>June Tmax <b className="text-slate-800">{juneTmax.mean} °C</b></span>}
+        {hotDays !== null && <span>Days ≥ 40 °C <b className="text-slate-800">{hotDays}/year</b></span>}
         {record && <span className="col-span-2">Record cell <b className="text-slate-800">{record.mm} mm</b> on {record.date}</span>}
         {real && (
           <span className="col-span-2">NCMRWF 2015 check: MAE <b className="text-slate-800">{real.mae} mm</b>, {real.bias < 0 ? 'under' : 'over'}-forecast {Math.abs(real.bias)} mm, {real.busts} bust{real.busts === 1 ? '' : 's'} in {real.pairs}</span>
@@ -364,6 +369,7 @@ function DataSources() {
           {[
             { name: 'NCMRWF NWP rainfall files (real)', status: forecastStatus },
             { name: 'IMD gridded rainfall (real)', status: `0.25° daily · ${IMD_YEARS.join(', ')}` },
+            { name: 'IMD gridded max temperature (real)', status: '1° daily · 2015, 2022–2024' },
             { name: 'Real forecast/observation pairs', status: `${getRealVerification().pairs.length} (NCMRWF vs IMD)` },
             { name: 'Forecast coverage', status: coverageStatus },
             { name: 'Hindcast archive (synthetic)', status: '6,000 pairs · 2016–2023' },
@@ -528,7 +534,7 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div className={`flex items-center gap-2 ${activeCase ? 'hidden' : ''}`}>
+          <div className="flex items-center gap-2">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Variable</span>
             <div className="flex p-0.5 bg-slate-100 rounded-lg">
               {VARIABLES.map((v) => {
@@ -577,7 +583,7 @@ export default function App() {
 
       <main className="max-w-[1600px] mx-auto p-4 lg:p-6 space-y-4">
         {activeCase ? (
-          <CaseStudyView caseId={activeCase.id} day={day} setDay={setDay} selectedRegion={selectedRegion} onSelectRegion={setSelectedRegion} />
+          <CaseStudyView caseId={activeCase.id} variable={variable} day={day} setDay={setDay} selectedRegion={selectedRegion} onSelectRegion={setSelectedRegion} />
         ) : (<>
         <SummaryCards day={day} variable={variable} />
         <ForecastTimeline day={day} setDay={setDay} variable={variable} />
@@ -631,6 +637,11 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           <div className="lg:col-span-7"><RealVerificationPanel onSelectRegion={setSelectedRegion} /></div>
           <div className="lg:col-span-5 space-y-4"><RealModelCard /><NwpIngestionPanel /></div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <div className="lg:col-span-7"><TempVerificationPanel onSelectRegion={setSelectedRegion} /></div>
+          <div className="lg:col-span-5"><RealModelCard variable="temperature" /></div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">

@@ -7,7 +7,8 @@ import { getFingerprint } from '../data/scenario.ts';
 import { ALIGNED_RECORDS, bustThreshold, calculateErrorMetrics, clamp, forecastError, recordOutcomes, round } from './metrics.ts';
 import { predictBust } from './model.ts';
 import { getRealVerification } from './verification.ts';
-import { IMD_YEAR_LABEL, observedMonthly } from '../data/observations.ts';
+import { IMD_YEAR_LABEL, TMAX_YEARS, observedMonthly, observedTmaxMonthly } from '../data/observations.ts';
+import { getTempVerification } from './tempVerification.ts';
 
 export { alignForecastsAndObservations, calculateErrorMetrics } from './metrics.ts';
 export { getModelMetrics } from './model.ts';
@@ -187,6 +188,17 @@ function meteorologicalReasons(
         kind: 'history',
         text: `Real NCMRWF vs IMD check (${real.pairs} pairs, 2015): MAE ${real.mae} mm, ${real.bias < 0 ? 'under' : 'over'}-forecast by ${Math.abs(real.bias)} mm on average, ${real.busts} bust${real.busts === 1 ? '' : 's'}.`,
       });
+    }
+  }
+
+  if (variable === 'temperature') {
+    const june = observedTmaxMonthly(region, 6);
+    if (june && fingerprint.temperature > june.p95) {
+      reasons.push({ kind: 'history', text: `Forecast Tmax ${fingerprint.temperature} °C is above the 95th percentile of observed June maximum temperature for ${region} (${june.p95} °C, IMD ${TMAX_YEARS.join(', ')}).` });
+    }
+    const real = getTempVerification().byRegion.find((item) => item.region === region);
+    if (real && real.busts > 0) {
+      reasons.push({ kind: 'history', text: `Real NCMRWF vs IMD temperature check (${real.pairs} pairs, 2015): MAE ${real.mae} °C, ${real.busts} bust${real.busts === 1 ? '' : 's'}.` });
     }
   }
 

@@ -63,7 +63,7 @@ export const EVENT_PROFILES: Record<EventType, {
 };
 
 /** June climatology for each state (24 h rainfall mm, Tmax °C, wind km/h, MSLP hPa).
- * The rainfall values here are fallbacks only: they are replaced below by the
+ * The rainfall and temperature values here are fallbacks only: they are replaced below by the
  * observed IMD June means (rainfall and maximum temperature). Wind and pressure are still estimates. */
 export const REGION_CLIMATOLOGY: Record<string, RegionClimatology> = {
   'Jammu & Kashmir': { rainfall: 4, temperature: 32, windSpeed: 12, pressure: 1003, events: { 'Western disturbance': 3, 'Fair weather': 2, 'Heavy rainfall': 1 } },

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { BrainCircuit, CheckCircle2, CloudRain, Database, Scale } from 'lucide-react';
-import { getRealModel } from '../analysis/realModel';
+import { BrainCircuit, CheckCircle2, CloudRain, Database, Scale, Thermometer } from 'lucide-react';
+import { getRealModel, getRealTempModel } from '../analysis/realModel';
+import { getTempVerification } from '../analysis/tempVerification';
 import nwpForecasts from '../data/nwpForecasts.json';
 import { STATE_POSITIONS } from '../data/regions';
 import {
@@ -279,13 +280,14 @@ export function ObservedClimatologyPanel({ region, onSelectRegion }: { region: s
 }
 
 /** Bust model trained on real NCMRWF S2S vs IMD pairs, scored leave-one-run-out. */
-export function RealModelCard() {
-  const model = getRealModel();
+export function RealModelCard({ variable = 'rainfall' }: { variable?: 'rainfall' | 'temperature' }) {
+  const model = variable === 'temperature' ? getRealTempModel() : getRealModel();
+  const perRunMean = Math.round((model.byRun.reduce((sum, run) => sum + run.auc, 0) / model.byRun.length) * 100) / 100;
   const skill = Math.round((1 - model.brier / model.climatologyBrier) * 100);
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BrainCircuit size={15} className="text-violet-500" /> Real bust model</h3>
+        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BrainCircuit size={15} className="text-violet-500" /> Real bust model · {variable === 'temperature' ? 'Temperature' : 'Rainfall'}</h3>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium flex items-center gap-1">
           <CheckCircle2 size={11} /> Trained on real data
         </span>
@@ -298,7 +300,7 @@ export function RealModelCard() {
         {[
           { label: 'ROC AUC (held-out)', value: model.auc.toFixed(2) },
           { label: 'Brier skill', value: `${skill}%` },
-          { label: 'Rainfall-only AUC', value: model.baselineAuc.toFixed(2) },
+          { label: `${model.baselineLabel} (AUC)`, value: model.baselineAuc.toFixed(2) },
         ].map((item) => (
           <div key={item.label} className="bg-violet-50 rounded-lg px-2 py-1.5">
             <div className="text-[10px] text-violet-700">{item.label}</div>
@@ -320,10 +322,94 @@ export function RealModelCard() {
       </div>
       <div className="text-[11px] text-slate-500 space-y-1">
         <p>Held-out AUC by run: {model.byRun.map((run) => `${run.run.slice(5, 7)}/${run.run.slice(0, 4)} ${run.auc.toFixed(2)}`).join(' · ')}.</p>
-        <p>
-          Honest caveat: with only {model.runs.length} runs, forecast rainfall amount alone ranks busts about as well ({model.baselineAuc.toFixed(2)}).
-          The pressure, terrain and lead-time predictors make the probabilities calibrated and explainable; more runs are needed to show they add ranking skill.
-        </p>
+        {variable === 'temperature' ? (
+          <p>
+            Honest caveat: within each run the model ranks busts well (mean held-out AUC {perRunMean.toFixed(2)}), but pooled across runs it drops to {model.auc.toFixed(2)}
+            because June's corrected forecasts are systematically too cold (the correction was learned from monsoon months).
+            The single predictor "{model.baselineLabel.toLowerCase()}" scores {model.baselineAuc.toFixed(2)}. More runs per month are needed.
+          </p>
+        ) : (
+          <p>
+            Honest caveat: with only {model.runs.length} runs, forecast rainfall amount alone ranks busts about as well ({model.baselineAuc.toFixed(2)}).
+            The pressure, terrain and lead-time predictors make the probabilities calibrated and explainable; more runs are needed to show they add ranking skill.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Real temperature verification: MOS-corrected S2S 925 hPa forecast vs IMD Tmax. */
+export function TempVerificationPanel({ onSelectRegion }: { onSelectRegion: (region: string) => void }) {
+  const verification = getTempVerification();
+  if (!verification.overall) return null;
+  const { overall } = verification;
+  const maxMae = Math.max(...verification.byLead.map((lead) => lead.mae), 1);
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+          <Thermometer size={15} className="text-orange-500" /> Real verification · Temperature (NCMRWF vs IMD)
+        </h3>
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium flex items-center gap-1">
+          <CheckCircle2 size={11} /> Real data · {verification.pairs.length} pairs
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-500 mb-3">
+        S2S has no 2 m temperature, so the 925 hPa forecast is corrected to surface Tmax with MOS (Tmax ≈ a_state + {verification.slope}·T925),
+        fitted on the other runs only, then compared with IMD 1° gridded Tmax.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {[
+          { label: 'MAE after MOS', value: `${overall.mae} °C` },
+          { label: 'Raw 925 hPa MAE', value: `${overall.rawMae} °C` },
+          { label: 'Bias', value: `${overall.bias > 0 ? '+' : ''}${overall.bias} °C` },
+          { label: 'Bust if |error| ≥', value: `${verification.bustThreshold} °C` },
+        ].map((item) => (
+          <div key={item.label} className="bg-slate-50 rounded-lg px-2.5 py-2">
+            <div className="text-[10px] font-medium text-slate-500">{item.label}</div>
+            <div className="text-base font-semibold text-slate-900 tabular-nums">{item.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <h4 className="text-xs font-semibold text-slate-800 mb-2">Error by lead day</h4>
+          <div className="space-y-1.5">
+            {verification.byLead.map((lead) => (
+              <div key={lead.leadDay} className="flex items-center gap-2 text-[11px]">
+                <span className="w-7 text-slate-500 font-medium">D{lead.leadDay}</span>
+                <div className="flex-1 h-4 bg-slate-100 rounded overflow-hidden">
+                  <div className="h-full rounded bg-orange-500 transition-all" style={{ width: `${(lead.mae / maxMae) * 100}%` }} />
+                </div>
+                <span className="w-28 text-right tabular-nums text-slate-700 whitespace-nowrap">{lead.mae} °C · {lead.bustRate}% bust</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h4 className="text-xs font-semibold text-slate-800 mb-2">Most error-prone states (real)</h4>
+          <div className="space-y-1">
+            {verification.byRegion.slice(0, 6).map((region) => (
+              <button key={region.region} onClick={() => onSelectRegion(region.region)}
+                className="w-full flex items-center gap-2 text-[11px] rounded-md px-2 py-1 hover:bg-slate-50 text-left">
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: confidenceColor(region.confidence) }} />
+                <span className="flex-1 font-medium text-slate-800">{region.region}</span>
+                <span className="tabular-nums text-slate-600">MAE {region.mae}</span>
+                <span className="tabular-nums w-16 text-right text-slate-600">{region.busts} busts</span>
+              </button>
+            ))}
+          </div>
+          <h4 className="text-xs font-semibold text-slate-800 mt-3 mb-1">Largest busts</h4>
+          <div className="space-y-0.5 text-[11px]">
+            {verification.worstCases.slice(0, 4).map((pair) => (
+              <div key={`${pair.region}-${pair.initDate}-${pair.leadDay}`} className="flex justify-between text-slate-600">
+                <span>{pair.region} · {pair.validDate} · D{pair.leadDay}</span>
+                <span className="tabular-nums">{pair.forecast} vs {pair.observed} °C <b className={pair.error > 0 ? 'text-rose-600' : 'text-sky-600'}>{pair.error > 0 ? '+' : ''}{pair.error}</b></span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
