@@ -300,6 +300,7 @@ export function getCaseEvaluation(id: CaseId, variable: CaseVariable = 'rainfall
   const caught = busts.filter((cell) => cell.risk !== 'high');
   const falseAlarms = flagged.filter((cell) => cell.outcome !== 'bust');
   const rate = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+  const hasBoth = busts.length > 0 && busts.length < verified.length;
   const byRisk = (['low', 'medium', 'high'] as Confidence[]).map((risk) => {
     const group = verified.filter((cell) => cell.risk === risk);
     const groupBusts = group.filter((cell) => cell.outcome === 'bust').length;
@@ -309,11 +310,12 @@ export function getCaseEvaluation(id: CaseId, variable: CaseVariable = 'rainfall
     verified: verified.length,
     busts: busts.length,
     caught: caught.length,
-    hitRate: rate(caught.length, busts.length),
+    // Undefined (null) when the case had no busts: "0% caught" or AUC 0.5 would misread as a model failure.
+    hitRate: busts.length ? rate(caught.length, busts.length) : null,
     falseAlarmRatio: rate(falseAlarms.length, flagged.length),
     baseRate: rate(busts.length, verified.length),
-    modelAuc: Math.round(auc(verified.map((cell) => cell.probability ?? 0), labels) * 100) / 100,
-    rulesAuc: Math.round(auc(verified.map((cell) => cell.riskScore), labels) * 100) / 100,
+    modelAuc: hasBoth ? Math.round(auc(verified.map((cell) => cell.probability ?? 0), labels) * 100) / 100 : null,
+    rulesAuc: hasBoth ? Math.round(auc(verified.map((cell) => cell.riskScore), labels) * 100) / 100 : null,
     byRisk,
   };
 }

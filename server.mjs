@@ -1,6 +1,6 @@
-import { createReadStream, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // The analysis engine is shared with the dashboard; Node >= 22.18 runs the
 // TypeScript sources directly via type stripping.
@@ -102,7 +102,6 @@ function createCasePrompt({ caseId, day, region, variable }) {
   const verification = variable === 'temperature' ? getTempVerification() : getRealVerification();
   const stateRecord = verification.byRegion.find((item) => item.region === region);
   const riskLabel = { low: 'high risk', medium: 'elevated risk', high: 'low risk' }[cell.risk];
-  const basins = getCaseBasinSystems(caseId).filter((system) => system.day === day).map((system) => `${system.label}: ${system.detail}`);
 
   const evidence = {
     case: definition.label,
@@ -122,7 +121,6 @@ function createCasePrompt({ caseId, day, region, variable }) {
     ruleFlagsKnownAtForecastTime: cell.flags.map((flag) => flag.label),
     forecastSignals: cell.signals.filter((signal) => signal.kind === 'forecast' || signal.label === 'Forecast heat').map((signal) => `${signal.label}: ${signal.detail}`),
     whatActuallyHappenedPerReanalysis: cell.signals.filter((signal) => signal.kind !== 'forecast' && signal.label !== 'Forecast heat').map((signal) => `${signal.label}: ${signal.detail}`),
-    basinSystemsThatDay: basins,
     stateRecordAcrossAllRuns: stateRecord ? { pairs: stateRecord.pairs, meanAbsError: stateRecord.mae, bias: stateRecord.bias, busts: stateRecord.busts } : null,
     temperatureMethodNote: variable === 'temperature'
       ? 'Forecast temperature is the S2S 925 hPa temperature corrected to surface Tmax with MOS fitted on other runs.'
@@ -158,7 +156,7 @@ async function callGemini(prompt) {
         // Gemini 3 models "think" before answering and those tokens count
         // against maxOutputTokens, so the budget must cover both. Length is
         // controlled by the prompt (85–125 words), not by this cap.
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2048, thinkingConfig: { thinkingLevel: 'low' } },
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: 'low' } },
       }),
       signal: AbortSignal.timeout(30_000),
     },
@@ -190,20 +188,31 @@ async function callGemini(prompt) {
   return text;
 }
 
+function isFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function serveStatic(requestPath, response) {
   const requested = requestPath === '/' ? 'index.html' : requestPath.replace(/^\/+/, '');
   const filePath = resolve(distDirectory, normalize(requested));
-  const safePath = filePath.startsWith(distDirectory) ? filePath : join(distDirectory, 'index.html');
   const fallback = join(distDirectory, 'index.html');
-  const target = existsSync(safePath) ? safePath : fallback;
+  // Directories (e.g. /assets) must fall back too: streaming one throws EISDIR and kills the process.
+  const inside = filePath === distDirectory || filePath.startsWith(distDirectory + sep);
+  const target = inside && isFile(filePath) ? filePath : fallback;
 
-  if (!existsSync(target)) {
+  if (!isFile(target)) {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     response.end('Build the frontend first with npm run build.');
     return;
   }
   response.writeHead(200, { 'Content-Type': contentTypes[extname(target)] || 'application/octet-stream' });
-  createReadStream(target).pipe(response);
+  createReadStream(target)
+    .on('error', () => response.destroy())
+    .pipe(response);
 }
 
 const EVALUATED_VARIABLES = ['rainfall', 'temperature'];

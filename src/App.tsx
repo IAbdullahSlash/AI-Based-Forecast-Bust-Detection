@@ -18,7 +18,7 @@ import { CaseStudyView } from './components/CaseStudy';
 import { CASES, type CaseId } from './analysis/caseStudy';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
-import { DatasetStatus, fetchDatasetStatus } from './api/datasetApi';
+import nwpForecasts from './data/nwpForecasts.json';
 import { CONFIDENCE_COLORS, confidenceColor, setDarkMode } from './theme';
 
 const EVALUATED: ForecastVariable[] = ['rainfall', 'temperature'];
@@ -348,16 +348,11 @@ function AIExplanation({ region, day, variable }: { region: string; day: number;
 
 function DataSources() {
   const [open, setOpen] = useState(true);
-  const [dataset, setDataset] = useState<DatasetStatus | null>(null);
-
-  useEffect(() => {
-    fetchDatasetStatus().then(setDataset).catch(() => setDataset(null));
-  }, []);
-
-  const forecastStatus = dataset?.available ? `${dataset.fileCount} NetCDF files` : 'Server offline or no files';
-  const coverageStatus = dataset?.available
-    ? `${dataset.initializations.length} initializations, day${String(dataset.forecastDays[0]).padStart(2, '0')}–${String(dataset.forecastDays[dataset.forecastDays.length - 1]).padStart(2, '0')}`
-    : 'Pending';
+  // Read from the bundled extract, not the raw dataset/ folder, which is gitignored and absent in deployments.
+  const runs = Object.values(nwpForecasts.initializations);
+  const days = runs[0]?.days ?? [];
+  const forecastStatus = `${runs.length} S2S runs (state means extracted)`;
+  const coverageStatus = `${Object.keys(nwpForecasts.initializations).join(', ')} · day${String(days[0]).padStart(2, '0')}–${String(days[days.length - 1]).padStart(2, '0')}`;
   return (
     <div className="card overflow-hidden">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-4 text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors">
@@ -367,7 +362,7 @@ function DataSources() {
       {open && (
         <div className="px-4 pb-4 space-y-1.5">
           {[
-            { name: 'NCMRWF NWP rainfall files (real)', status: forecastStatus },
+            { name: 'NCMRWF S2S forecasts (real)', status: forecastStatus },
             { name: 'IMD gridded rainfall (real)', status: `0.25° daily · ${IMD_YEARS.join(', ')}` },
             { name: 'IMD gridded max temperature (real)', status: '1° daily · 2015, 2022–2024' },
             { name: 'Real forecast/observation pairs', status: `${getRealVerification().pairs.length} (NCMRWF vs IMD)` },
@@ -472,13 +467,19 @@ export default function App() {
     try { localStorage.setItem('theme', next); } catch { /* storage unavailable */ }
     setTheme(next);
   };
-  const [scenario, setScenario] = useState<'synthetic' | CaseId>('synthetic');
+  // Open on the first real case so real data is what people see first.
+  const [scenario, setScenario] = useState<'synthetic' | CaseId>(CASES[0]?.id ?? 'synthetic');
   const activeCase = CASES.find((c) => c.id === scenario);
-  const [day, setDay] = useState(5);
+  const [day, setDay] = useState(6);
   const [variable, setVariable] = useState<EvaluatedVariable>('rainfall');
   const [mapMode, setMapMode] = useState<'confidence' | 'bust'>('confidence');
-  const [selectedRegion, setSelectedRegion] = useState<string | null>('Odisha');
+  const [selectedRegion, setSelectedRegion] = useState<string | null>('Goa');
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
+
+  // On narrow screens the control rows scroll sideways; keep the selected pills visible.
+  useEffect(() => {
+    document.querySelectorAll('[data-controls] [aria-pressed="true"]').forEach((el) => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  }, [scenario, variable, day]);
 
   const focusRegion = (region: string, focusDay: number) => {
     setSelectedRegion(region);
@@ -516,17 +517,18 @@ export default function App() {
         </div>
       </header>
 
-      <div className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
-        <div className="max-w-[1600px] mx-auto px-6 py-2.5 flex items-center gap-x-6 gap-y-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Scenario</span>
-            <div className="flex p-0.5 bg-slate-100 rounded-lg">
+      <div data-controls className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-2.5 flex items-center gap-x-6 gap-y-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 max-w-full">
+            <span className="shrink-0 text-[11px] font-medium text-slate-500 uppercase tracking-wide">Scenario</span>
+            <div className="flex p-0.5 bg-slate-100 rounded-lg min-w-0 overflow-x-auto [scrollbar-width:none]">
               {[{ id: 'synthetic' as const, short: 'Demo 2026' }, ...CASES].map((option) => (
                 <button
                   key={option.id}
                   onClick={() => setScenario(option.id)}
+                  aria-pressed={scenario === option.id}
                   title={option.id === 'synthetic' ? 'Synthetic 10-day scenario (demo data)' : `${'label' in option ? option.label : ''} (real data)`}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${scenario === option.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${scenario === option.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                 >
                   {option.id !== 'synthetic' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                   {option.short}
@@ -534,9 +536,9 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Variable</span>
-            <div className="flex p-0.5 bg-slate-100 rounded-lg">
+          <div className="flex items-center gap-2 min-w-0 max-w-full">
+            <span className="shrink-0 text-[11px] font-medium text-slate-500 uppercase tracking-wide">Variable</span>
+            <div className="flex p-0.5 bg-slate-100 rounded-lg min-w-0 overflow-x-auto [scrollbar-width:none]">
               {VARIABLES.map((v) => {
                 const enabled = EVALUATED.includes(v.key);
                 return (
@@ -544,8 +546,9 @@ export default function App() {
                     key={v.key}
                     onClick={() => enabled && setVariable(v.key as EvaluatedVariable)}
                     disabled={!enabled}
+                    aria-pressed={variable === v.key}
                     title={enabled ? `${v.label} bust detection from paired hindcast records` : 'Pending matching historical datasets'}
-                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800 disabled:text-slate-300 disabled:cursor-not-allowed'}`}
+                    className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${variable === v.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800 disabled:text-slate-300 disabled:cursor-not-allowed'}`}
                   >
                     {v.icon} {v.label}
                   </button>
@@ -553,15 +556,16 @@ export default function App() {
               })}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Lead time</span>
+          <div className="flex items-center gap-2 min-w-0 max-w-full">
+            <span className="shrink-0 text-[11px] font-medium text-slate-500 uppercase tracking-wide">Lead time</span>
             <button onClick={() => setDay(Math.max(1, day - 1))} aria-label="Previous day" className="p-1 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={day === 1}><ChevronLeft size={15} /></button>
-            <div className="flex p-0.5 bg-slate-100 rounded-lg">
+            <div className="flex p-0.5 bg-slate-100 rounded-lg min-w-0 overflow-x-auto [scrollbar-width:none]">
               {DAYS.map((d) => (
                 <button
                   key={d}
                   onClick={() => setDay(d)}
-                  className={`w-8 py-1 rounded-md text-xs font-semibold transition-all ${day === d ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
+                  aria-pressed={day === d}
+                  className={`shrink-0 w-8 py-1 rounded-md text-xs font-semibold transition-all ${day === d ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
                 >
                   D{d}
                 </button>

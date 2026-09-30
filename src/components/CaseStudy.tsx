@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CloudLightning, Crosshair, MapPin, Target, Wind, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudLightning, Crosshair, MapPin, Target, Wind, X, Zap } from 'lucide-react';
+import { generateCaseBriefing } from '../api/geminiApi';
 import {
   CASES, IMDAA_SOURCE, caseBustThreshold, getCaseBasinSystems, getCaseCells, getCaseDay, getCaseEvaluation, reanalysisAvailable, reanalysisCovers,
   type CaseCell, type CaseId, type CaseVariable, type Outcome,
@@ -161,7 +162,7 @@ export function CaseStudyView({ caseId, variable, day, setDay, selectedRegion, o
           { label: `Real busts · Day ${day}`, value: hasForecast ? busts.length : '—', sub: hasForecast ? `|error| ≥ ${threshold} ${unit}` : 'No forecast at this lead (temperature starts at day01)', icon: <AlertTriangle size={18} />, tint: 'bg-rose-50 text-rose-600' },
           { label: 'Predicted high risk', value: highRisk.length, sub: 'Bust probability ≥ 30%, before outcome', icon: <Crosshair size={18} />, tint: 'bg-amber-50 text-amber-600' },
           { label: `Mean abs. error · Day ${day}`, value: mae === null ? '—' : `${mae}`, sub: `${unit}, state means`, icon: <Target size={18} />, tint: 'bg-sky-50 text-sky-600' },
-          { label: 'Busts anticipated (case)', value: `${evaluation.caught}/${evaluation.busts}`, sub: `${evaluation.hitRate}% flagged elevated or high risk`, icon: <CheckCircle2 size={18} />, tint: 'bg-emerald-50 text-emerald-600' },
+          { label: 'Busts anticipated (case)', value: `${evaluation.caught}/${evaluation.busts}`, sub: evaluation.hitRate === null ? 'No busts in this case' : `${evaluation.hitRate}% flagged elevated or high risk`, icon: <CheckCircle2 size={18} />, tint: 'bg-emerald-50 text-emerald-600' },
         ].map((card) => (
           <div key={card.label} className="card p-4">
             <div className="flex items-start justify-between">
@@ -245,10 +246,10 @@ export function CaseStudyView({ caseId, variable, day, setDay, selectedRegion, o
           </table>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
             {[
-              { label: 'Busts flagged', value: `${evaluation.hitRate}%` },
+              { label: 'Busts flagged', value: evaluation.hitRate === null ? '—' : `${evaluation.hitRate}%` },
               { label: 'False alarms', value: `${evaluation.falseAlarmRatio}%` },
-              { label: 'Model AUC', value: evaluation.modelAuc.toFixed(2) },
-              { label: 'Rule-flag AUC', value: evaluation.rulesAuc.toFixed(2) },
+              { label: 'Model AUC', value: evaluation.modelAuc === null ? '—' : evaluation.modelAuc.toFixed(2) },
+              { label: 'Rule-flag AUC', value: evaluation.rulesAuc === null ? '—' : evaluation.rulesAuc.toFixed(2) },
               { label: 'Base bust rate', value: `${evaluation.baseRate}%` },
             ].map((item) => (
               <div key={item.label} className="bg-slate-50 rounded-lg px-2.5 py-2">
@@ -344,6 +345,8 @@ function CaseRegionPanel({ cell, caseId, threshold, hasReanalysis, onClose }: { 
       </div>
 
       <div className="overflow-y-auto px-4 py-3 space-y-4">
+        <CaseBriefing caseId={caseId} cell={cell} />
+
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: 'Forecast', value: cell.forecast, unit },
@@ -445,3 +448,62 @@ function CaseRegionPanel({ cell, caseId, threshold, hasReanalysis, onClose }: { 
   );
 }
 
+
+const RISK_WORDS = { low: 'high', medium: 'elevated', high: 'low' } as const;
+
+/** Plain-language summary built only from the computed case data (no LLM). */
+function summarise(cell: CaseCell) {
+  if (cell.forecast === null || cell.observed === null || cell.error === null) {
+    return `No forecast is available for ${cell.region} on ${cell.date} at this lead time.`;
+  }
+  const verdict = cell.outcome === 'bust' ? 'a forecast bust' : cell.outcome === 'large' ? 'a large error' : 'within tolerance';
+  const anticipated = cell.probability === null ? ''
+    : cell.outcome === 'bust'
+      ? (cell.risk !== 'high' ? ` The bust model had flagged ${RISK_WORDS[cell.risk]} risk (${cell.probability}%) beforehand.` : ` The bust model rated the risk low (${cell.probability}%), so this bust was missed.`)
+      : ` The bust model gave ${cell.probability}% (${RISK_WORDS[cell.risk]} risk).`;
+  const drivers = cell.drivers.length ? ` Main drivers: ${cell.drivers.map((d) => d.feature.toLowerCase()).join(', ')}.` : '';
+  const weather = cell.signals.find((signal) => signal.kind !== 'forecast' && signal.label !== 'Forecast heat');
+  const happened = weather ? ` Reanalysis: ${weather.label.toLowerCase()} (${weather.detail}).` : '';
+  return `On ${cell.date} (Day ${cell.day}) NCMRWF forecast ${cell.forecast} ${cell.unit} for ${cell.region}; IMD observed ${cell.observed} ${cell.unit} ` +
+    `(${cell.error > 0 ? '+' : ''}${cell.error} ${cell.unit}), ${verdict}.${anticipated}${drivers}${happened}`;
+}
+
+function CaseBriefing({ caseId, cell }: { caseId: CaseId; cell: CaseCell }) {
+  const key = `${caseId}|${cell.variable}|${cell.region}|${cell.day}`;
+  const [briefing, setBriefing] = useState<{ key: string; text: string } | null>(null);
+  const [error, setError] = useState<{ key: string; text: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const visible = briefing?.key === key ? briefing.text : null;
+  const visibleError = error?.key === key ? error.text : null;
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const text = await generateCaseBriefing({ caseId, day: cell.day, region: cell.region, variable: cell.variable });
+      setBriefing({ key, text });
+    } catch (reason) {
+      setError({ key, text: reason instanceof Error ? reason.message : 'Unable to generate a briefing.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="text-[11px] font-semibold text-sky-700 flex items-center gap-1"><Zap size={11} /> {visible ? 'Gemini briefing' : 'Summary'}</span>
+        <button
+          onClick={generate}
+          disabled={loading || cell.forecast === null}
+          className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[10px] font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating…' : visible ? 'Regenerate' : 'Explain with Gemini'}
+        </button>
+      </div>
+      <p className="text-xs text-slate-700 leading-relaxed">{visible ?? summarise(cell)}</p>
+      {visibleError && <p className="text-[11px] text-rose-600 mt-1">{visibleError}</p>}
+      {visible && <p className="text-[10px] text-slate-500 mt-1">Written by Gemini from the computed evidence only; it does not change any number.</p>}
+    </div>
+  );
+}
