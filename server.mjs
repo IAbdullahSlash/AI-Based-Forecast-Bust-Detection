@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 // The analysis engine is shared with the dashboard; Node >= 22.18 runs the
 // TypeScript sources directly via type stripping.
 import {
-  DAYS, SCENARIO, getAnalogueData, getConfidenceByDay, getErrorProneRegions, getExplanation,
-  getLeadErrorCurve, getModelMetrics, getRegionData,
+  DAYS, IMD_NOTE, IMD_SOURCE, IMD_YEARS, SCENARIO, getAnalogueData, getConfidenceByDay, getErrorProneRegions,
+  getExplanation, getLeadErrorCurve, getModelMetrics, getRealVerification, getRegionData, monsoonAverages, observedSummary,
 } from './src/analysis/forecastEngine.ts';
 import { STATE_POSITIONS } from './src/data/regions.ts';
 
@@ -217,6 +217,19 @@ function handleAnalysisApi(url) {
       if (!existsSync(file)) throw new Error('No extracted NWP data. Run npm run extract:nwp first.');
       return JSON.parse(readFileSync(file, 'utf8'));
     }
+    case '/api/verification': {
+      const { pairs, ...summary } = getRealVerification();
+      return url.searchParams.get('pairs') === 'true' ? { ...summary, pairs } : { ...summary, pairCount: pairs.length };
+    }
+    case '/api/imd':
+      return {
+        source: IMD_SOURCE,
+        note: IMD_NOTE,
+        years: IMD_YEARS,
+        regions: Object.fromEntries(STATE_POSITIONS.map((state) => [
+          state.name, { ...observedSummary(state.name), monsoonAverages: monsoonAverages(state.name) },
+        ])),
+      };
     case '/api/model':
       return { rainfall: getModelMetrics('rainfall'), temperature: getModelMetrics('temperature') };
     default:

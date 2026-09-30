@@ -1,6 +1,4 @@
-import { useState } from 'react';
-import { AlertTriangle, BrainCircuit, CloudLightning, Database, Grid3x3, TrendingUp } from 'lucide-react';
-import nwpForecasts from '../data/nwpForecasts.json';
+import { AlertTriangle, BrainCircuit, CloudLightning, Grid3x3, TrendingUp } from 'lucide-react';
 import { BUST_LEGEND, bustColor, bustTextColor } from '../theme';
 import type { EvaluatedVariable } from '../types';
 import { STATE_POSITIONS } from '../data/regions';
@@ -138,71 +136,6 @@ export function ModelCard({ variable }: { variable: EvaluatedVariable }) {
         Logistic regression on forecast-time predictors (intensity, anomalies, pressure tendency, lead time, weather regime),
         trained on {metrics.trainSize.toLocaleString()} hindcast pairs and verified on {metrics.testSize} held-out {metrics.testYear} cases.
         Blended 60/40 with a k-nearest-neighbour analogue estimate.
-      </p>
-    </div>
-  );
-}
-
-type NwpInit = { variable: string; days: number[]; indiaMax: number[]; regions: Record<string, { mean: number; max: number }[]> };
-const NWP = nwpForecasts as { source: string; note: string; initializations: Record<string, NwpInit> };
-
-function rainCellColor(mm: number) {
-  // IMD 24 h categories: light < 15.6, moderate < 64.5, heavy and above.
-  if (mm >= 64.5) return { background: '#dc2626', color: '#fff' };
-  if (mm >= 15.6) return { background: '#60a5fa', color: '#fff' };
-  if (mm >= 2.5) return { background: 'var(--rain-light-bg)', color: 'var(--rain-light-fg)' };
-  return { background: 'var(--rain-none-bg)', color: 'var(--rain-none-fg)' };
-}
-
-/** Real NCMRWF Unified Model hindcast rainfall read from dataset/*.nc. */
-export function NwpIngestionPanel() {
-  const inits = Object.keys(NWP.initializations);
-  const [init, setInit] = useState(inits[0]);
-  const entry = NWP.initializations[init];
-  if (!entry) return null;
-  return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Database size={15} className="text-emerald-600" /> Real NWP ingestion · NCMRWF UM hindcast rainfall</h3>
-        <div className="flex gap-1">
-          {inits.map((key) => (
-            <button key={key} onClick={() => setInit(key)}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${key === init ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              IC {key}
-            </button>
-          ))}
-        </div>
-      </div>
-      <p className="text-[10px] text-slate-500 mb-2">{NWP.note} Source: {NWP.source.trim()}</p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[10px] border-separate" style={{ borderSpacing: 2 }}>
-          <thead>
-            <tr>
-              <th className="text-left font-medium text-slate-500 pr-2">Region (mm/24 h)</th>
-              {entry.days.map((d) => <th key={d} className="font-medium text-slate-500 w-12">day{String(d).padStart(2, '0')}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {STATE_POSITIONS.map((state) => (
-              <tr key={state.name}>
-                <td className="pr-2 whitespace-nowrap text-slate-600">{state.name}</td>
-                {(entry.regions[state.name] ?? []).map((value, i) => (
-                  <td key={i} className="text-center rounded-sm font-semibold h-5" style={rainCellColor(value.mean)}
-                    title={`${state.name}, day${String(entry.days[i]).padStart(2, '0')}: mean ${value.mean} mm, max ${value.max} mm`}>
-                    {value.mean}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            <tr>
-              <td className="pr-2 text-slate-500 italic">India grid max</td>
-              {entry.indiaMax.map((value, i) => <td key={i} className="text-center text-slate-500 italic">{value}</td>)}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[10px] text-slate-500 mt-2">
-        Next step: pair these forecasts with IMD gridded observations for the same valid dates. Each pair becomes one row of the hindcast archive that the bust model trains on.
       </p>
     </div>
   );

@@ -6,10 +6,14 @@ import { EVENT_PROFILES, REGION_CLIMATOLOGY, STATE_POSITIONS } from '../data/reg
 import { getFingerprint } from '../data/scenario.ts';
 import { ALIGNED_RECORDS, bustThreshold, calculateErrorMetrics, clamp, forecastError, recordOutcomes, round } from './metrics.ts';
 import { predictBust } from './model.ts';
+import { getRealVerification } from './verification.ts';
+import { IMD_YEAR_LABEL, observedMonthly } from '../data/observations.ts';
 
 export { alignForecastsAndObservations, calculateErrorMetrics } from './metrics.ts';
 export { getModelMetrics } from './model.ts';
 export { getActiveSystems, SCENARIO } from '../data/scenario.ts';
+export { getRealVerification } from './verification.ts';
+export { IMD_NOTE, IMD_SOURCE, IMD_YEAR_LABEL, IMD_YEARS, monsoonAverages, observedMonthly, observedSummary } from '../data/observations.ts';
 
 export const DAYS = Array.from({ length: 10 }, (_, i) => i + 1);
 export const UNITS: Record<EvaluatedVariable, string> = { rainfall: 'mm', temperature: '°C' };
@@ -166,6 +170,24 @@ function meteorologicalReasons(
   }
   if (fingerprint.windSpeed >= 45) {
     reasons.push({ kind: 'intensity', text: `Strong winds of ${fingerprint.windSpeed} km/h indicate a vigorous, fast-changing circulation.` });
+  }
+
+  // Evidence from real observations (IMD) and real forecast verification (NCMRWF vs IMD).
+  if (variable === 'rainfall') {
+    const june = observedMonthly(region, 6);
+    const years = IMD_YEAR_LABEL;
+    if (june && fingerprint.rainfall > june.p99) {
+      reasons.push({ kind: 'history', text: `Forecast ${fingerprint.rainfall} mm is above the 99th percentile of observed June daily rainfall for ${region} (${june.p99} mm, IMD ${years}): a rare amount with little verification history.` });
+    } else if (june && fingerprint.rainfall > june.p95) {
+      reasons.push({ kind: 'history', text: `Forecast ${fingerprint.rainfall} mm is above the 95th percentile of observed June daily rainfall for ${region} (${june.p95} mm, IMD ${years}).` });
+    }
+    const real = getRealVerification().byRegion.find((item) => item.region === region);
+    if (real && real.busts > 0) {
+      reasons.push({
+        kind: 'history',
+        text: `Real NCMRWF vs IMD check (${real.pairs} pairs, 2015): MAE ${real.mae} mm, ${real.bias < 0 ? 'under' : 'over'}-forecast by ${Math.abs(real.bias)} mm on average, ${real.busts} bust${real.busts === 1 ? '' : 's'}.`,
+      });
+    }
   }
 
   const dayOne = curve[0];

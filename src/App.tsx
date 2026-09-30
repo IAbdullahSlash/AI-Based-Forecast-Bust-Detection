@@ -9,7 +9,9 @@ import { STATE_POSITIONS } from './data/regions';
 import {
   DAYS, getRegionData, getAnalogueData, getExplanation, getSummaryStats, getConfidenceByDay, SCENARIO,
 } from './analysis/forecastEngine';
-import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard, NwpIngestionPanel } from './components/Insights';
+import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard } from './components/Insights';
+import { NwpIngestionPanel, ObservedClimatologyPanel, RealVerificationPanel } from './components/RealData';
+import { IMD_YEAR_LABEL, IMD_YEARS, getRealVerification, monsoonAverages, observedMonthly, observedSummary } from './analysis/forecastEngine';
 import IndiaMap from './components/IndiaMap';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
@@ -198,6 +200,8 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
 
         <LeadErrorChart region={region} variable={variable} day={day} />
 
+        <ObservedFacts region={region} />
+
         <div>
           <h4 className="text-xs font-semibold text-slate-800 mb-2">Why confidence is {data.confidence}</h4>
           <ul className="space-y-2">
@@ -230,6 +234,30 @@ function RegionDetailPanel({ region, day, variable, onClose }: { region: string;
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Real IMD facts for the selected state, shown in the detail panel. */
+function ObservedFacts({ region }: { region: string }) {
+  const june = observedMonthly(region, 6);
+  const monsoon = monsoonAverages(region);
+  const record = observedSummary(region)?.maxCellRain;
+  const real = getRealVerification().byRegion.find((item) => item.region === region);
+  if (!june || !monsoon) return null;
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+      <div className="text-[11px] font-semibold text-emerald-700 mb-1.5">Observed · IMD {IMD_YEAR_LABEL} (real data)</div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-600">
+        <span>June mean <b className="text-slate-800">{june.mean} mm/day</b></span>
+        <span>June P99 <b className="text-slate-800">{june.p99} mm</b></span>
+        <span>Monsoon total <b className="text-slate-800">{monsoon.total} mm</b></span>
+        <span>Heavy-rain days <b className="text-slate-800">{monsoon.widespreadHeavyDays}/season</b></span>
+        {record && <span className="col-span-2">Record cell <b className="text-slate-800">{record.mm} mm</b> on {record.date}</span>}
+        {real && (
+          <span className="col-span-2">NCMRWF 2015 check: MAE <b className="text-slate-800">{real.mae} mm</b>, {real.bias < 0 ? 'under' : 'over'}-forecast {Math.abs(real.bias)} mm, {real.busts} bust{real.busts === 1 ? '' : 's'} in {real.pairs}</span>
+        )}
       </div>
     </div>
   );
@@ -332,11 +360,12 @@ function DataSources() {
       {open && (
         <div className="px-4 pb-4 space-y-1.5">
           {[
-            { name: 'NCMRWF NWP rainfall files', status: forecastStatus },
+            { name: 'NCMRWF NWP rainfall files (real)', status: forecastStatus },
+            { name: 'IMD gridded rainfall (real)', status: `0.25° daily · ${IMD_YEARS.join(', ')}` },
+            { name: 'Real forecast/observation pairs', status: `${getRealVerification().pairs.length} (NCMRWF vs IMD)` },
             { name: 'Forecast coverage', status: coverageStatus },
             { name: 'Hindcast archive (synthetic)', status: '6,000 pairs · 2016–2023' },
             { name: 'Current forecast scenario', status: 'Synthetic · 10 Jun 2026' },
-            { name: 'Observed rainfall archive', status: dataset?.observationDataAvailable ? 'Available' : 'Needed for real verification' },
           ].map((source) => (
             <div key={source.name} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 text-xs">
               <span className="font-medium text-slate-700">{source.name}</span>
@@ -563,8 +592,18 @@ export default function App() {
           <ModelCard variable={variable} />
         </div>
 
+        <div className="pt-4">
+          <h2 className="text-base font-semibold text-slate-900">Real observations &amp; verification</h2>
+          <p className="text-xs text-slate-500">NCMRWF Unified Model forecasts checked against IMD gridded rainfall. Everything in this section is real data.</p>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          <div className="lg:col-span-8"><NwpIngestionPanel /></div>
+          <div className="lg:col-span-7"><RealVerificationPanel onSelectRegion={setSelectedRegion} /></div>
+          <div className="lg:col-span-5"><NwpIngestionPanel /></div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <div className="lg:col-span-8"><ObservedClimatologyPanel region={selectedRegion} onSelectRegion={setSelectedRegion} /></div>
           <div className="lg:col-span-4 space-y-4">
             <DataSources />
             <SystemStatus />

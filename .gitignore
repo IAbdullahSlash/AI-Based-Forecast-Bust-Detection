@@ -42,3 +42,6 @@ dist-ts/
 # Misc
 coverage/
 .nyc_output
+
+# Python
+__pycache__/

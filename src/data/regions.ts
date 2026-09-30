@@ -1,4 +1,5 @@
 import type { EventType, RegionClimatology, StatePosition } from '../types/index.ts';
+import { observedMonthly } from './observations.ts';
 
 export const STATE_POSITIONS: StatePosition[] = [
   { name: 'Jammu & Kashmir', x: 420, y: 110, lat: 33.8, lng: 74.8 },
@@ -61,7 +62,9 @@ export const EVENT_PROFILES: Record<EventType, {
     description: 'stable conditions are generally well forecast' },
 };
 
-/** June climatology for each state (24 h rainfall mm, Tmax °C, wind km/h, MSLP hPa). */
+/** June climatology for each state (24 h rainfall mm, Tmax °C, wind km/h, MSLP hPa).
+ * The rainfall values here are fallbacks only: they are replaced below by the
+ * observed IMD June mean. Temperature, wind and pressure are still estimates. */
 export const REGION_CLIMATOLOGY: Record<string, RegionClimatology> = {
   'Jammu & Kashmir': { rainfall: 4, temperature: 32, windSpeed: 12, pressure: 1003, events: { 'Western disturbance': 3, 'Fair weather': 2, 'Heavy rainfall': 1 } },
   'Himachal Pradesh': { rainfall: 5, temperature: 31, windSpeed: 11, pressure: 1004, events: { 'Western disturbance': 3, 'Heavy rainfall': 2, 'Fair weather': 1 } },
@@ -89,6 +92,11 @@ export const REGION_CLIMATOLOGY: Record<string, RegionClimatology> = {
   'Andhra Pradesh': { rainfall: 5, temperature: 38, windSpeed: 16, pressure: 1002, events: { 'Cyclone': 3, 'Heat wave': 1, 'Monsoon depression': 1 } },
   'Telangana': { rainfall: 6, temperature: 39, windSpeed: 14, pressure: 1002, events: { 'Monsoon depression': 2, 'Heat wave': 2, 'Break monsoon': 1 } },
 };
+
+for (const [name, climate] of Object.entries(REGION_CLIMATOLOGY)) {
+  const june = observedMonthly(name, 6);
+  if (june) climate.rainfall = june.mean;
+}
 
 /** Scales regime rainfall to how wet a region is climatologically. */
 export function wetness(region: string) {

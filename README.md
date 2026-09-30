@@ -25,6 +25,15 @@
 
 The server imports the same TypeScript engine as the dashboard, so it needs Node ≥ 22.18, which runs `.ts` files through type stripping.
 
+## Real data: NCMRWF forecasts + IMD observations
+
+- `dataset/*.nc`: NCMRWF Unified Model hindcast rainfall (runs 2015-06-01 and 2015-07-01, day00–05). Extract with `npm run extract:nwp`.
+- `dataset/IMD/RF25_ind<YEAR>_rfp25.nc`: IMD Pune 0.25° gridded daily rainfall (currently 2015 and 2022–2024). Extract with `npm run extract:imd` (needs `scipy`).
+- Both are averaged over the same state boundaries and joined on state + valid date (IMD date = run date + NN for file `dayNN`). The result is **300 real forecast/observation pairs**, shown in the dashboard's *Real observations & verification* section and served at `/api/verification`.
+- In the 2015 sample, the largest real busts are orographic heavy rain in Meghalaya and Sikkim (strongly under-forecast), and Day 0 has a dry bias (model spin-up).
+- IMD June normals replace the hand-set rainfall climatology, and the explanation engine cites observed percentiles and each state's real error record.
+- Still synthetic: the 6,000-pair training archive and the 10-day demo scenario. Replacing them needs more NCMRWF runs (ideally daily initialisations over several monsoons) paired the same way.
+
 ## India map
 
 State boundaries come from [udit-001/india-maps-data](https://github.com/udit-001/india-maps-data), which follows the official Indian boundary. `scripts/build-map.mjs` reduces them to a small state-level TopoJSON bundled with the app, so no map API or key is needed and the demo works offline.
