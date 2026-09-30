@@ -32,6 +32,7 @@ The server imports the same TypeScript engine as the dashboard, so it needs Node
 - Both are averaged over the same state boundaries and joined on state + valid date (IMD date = run date + NN for file `dayNN`). The result is **300 real forecast/observation pairs**, shown in the dashboard's *Real observations & verification* section and served at `/api/verification`.
 - In the 2015 sample, the largest real busts are orographic heavy rain in Meghalaya and Sikkim (strongly under-forecast), and Day 0 has a dry bias (model spin-up).
 - IMD June normals replace the hand-set rainfall climatology, and the explanation engine cites observed percentiles and each state's real error record.
+- `dataset/IMDAA/`: NCMRWF IMDAA reanalysis (850/200 hPa temperature and wind, 3-hourly, 1–10 June and 1–10 July 2015). Extract with `npm run extract:imdaa`. It powers the **real case studies** (Scenario switch → Jun 2015 / Jul 2015): real busts by state and day, weather systems diagnosed from the reanalysis (e.g. Cyclone Ashobaa, 6–10 June 2015), and a check of whether rule-based risk flags anticipated the busts. Also served at `/api/case`.
 - Still synthetic: the 6,000-pair training archive and the 10-day demo scenario. Replacing them needs more NCMRWF runs (ideally daily initialisations over several monsoons) paired the same way.
 
 ## India map

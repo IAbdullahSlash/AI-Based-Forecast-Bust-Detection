@@ -13,6 +13,8 @@ import { ActiveSystems, BustHeatmap, ErrorProneAreas, LeadErrorChart, ModelCard 
 import { NwpIngestionPanel, ObservedClimatologyPanel, RealVerificationPanel } from './components/RealData';
 import { IMD_YEAR_LABEL, IMD_YEARS, getRealVerification, monsoonAverages, observedMonthly, observedSummary } from './analysis/forecastEngine';
 import IndiaMap from './components/IndiaMap';
+import { CaseStudyView } from './components/CaseStudy';
+import { CASES, type CaseId } from './analysis/caseStudy';
 import { useWeatherData } from './hooks/useWeatherData';
 import { generateGeminiBriefing } from './api/geminiApi';
 import { DatasetStatus, fetchDatasetStatus } from './api/datasetApi';
@@ -464,6 +466,8 @@ export default function App() {
     try { localStorage.setItem('theme', next); } catch { /* storage unavailable */ }
     setTheme(next);
   };
+  const [scenario, setScenario] = useState<'synthetic' | CaseId>('synthetic');
+  const activeCase = CASES.find((c) => c.id === scenario);
   const [day, setDay] = useState(5);
   const [variable, setVariable] = useState<EvaluatedVariable>('rainfall');
   const [mapMode, setMapMode] = useState<'confidence' | 'bust'>('confidence');
@@ -490,11 +494,17 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-              <Clock size={12} /> {SCENARIO.label}
+              <Clock size={12} /> {activeCase ? activeCase.label : SCENARIO.label}
             </span>
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-400/10 border border-amber-300/30 text-amber-200 flex items-center gap-1.5">
-              <Activity size={12} /> Demo data
-            </span>
+            {activeCase ? (
+              <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-300/30 text-emerald-200 flex items-center gap-1.5">
+                <Activity size={12} /> Real data
+              </span>
+            ) : (
+              <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-400/10 border border-amber-300/30 text-amber-200 flex items-center gap-1.5">
+                <Activity size={12} /> Demo data
+              </span>
+            )}
 
           </div>
         </div>
@@ -503,6 +513,22 @@ export default function App() {
       <div className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
         <div className="max-w-[1600px] mx-auto px-6 py-2.5 flex items-center gap-x-6 gap-y-2 flex-wrap">
           <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Scenario</span>
+            <div className="flex p-0.5 bg-slate-100 rounded-lg">
+              {[{ id: 'synthetic' as const, short: 'Demo 2026' }, ...CASES].map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => setScenario(option.id)}
+                  title={option.id === 'synthetic' ? 'Synthetic 10-day scenario (demo data)' : `${'label' in option ? option.label : ''} (real data)`}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${scenario === option.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  {option.id !== 'synthetic' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                  {option.short}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 ${activeCase ? 'hidden' : ''}`}>
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Variable</span>
             <div className="flex p-0.5 bg-slate-100 rounded-lg">
               {VARIABLES.map((v) => {
@@ -550,6 +576,9 @@ export default function App() {
       </div>
 
       <main className="max-w-[1600px] mx-auto p-4 lg:p-6 space-y-4">
+        {activeCase ? (
+          <CaseStudyView caseId={activeCase.id} day={day} setDay={setDay} selectedRegion={selectedRegion} onSelectRegion={setSelectedRegion} />
+        ) : (<>
         <SummaryCards day={day} variable={variable} />
         <ForecastTimeline day={day} setDay={setDay} variable={variable} />
 
@@ -591,6 +620,8 @@ export default function App() {
           <HistoricalAnalogues region={selectedRegion || 'Odisha'} day={day} variable={variable} />
           <ModelCard variable={variable} />
         </div>
+
+        </>)}
 
         <div className="pt-4">
           <h2 className="text-base font-semibold text-slate-900">Real observations &amp; verification</h2>

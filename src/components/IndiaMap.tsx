@@ -59,9 +59,21 @@ const LABEL_NUDGE: Record<string, [number, number]> = {
 
 interface View { k: number; x: number; y: number }
 
+/** Lets another view (e.g. a real case study) colour the map with its own data. */
+export interface CustomMapView {
+  title: string;
+  subtitle: string;
+  modes: { key: string; label: string }[];
+  mode: string;
+  onModeChange: (mode: string) => void;
+  cell: (region: string) => { fill: string; textColor: string; tooltip: React.ReactNode } | null;
+  legend: React.ReactNode;
+}
+
 export default function IndiaMap({
-  day, variable, mapMode, onMapModeChange, selectedRegion, onSelectRegion, hoveredRegion, onHoverRegion,
+  day, variable, mapMode, onMapModeChange, selectedRegion, onSelectRegion, hoveredRegion, onHoverRegion, custom,
 }: {
+  custom?: CustomMapView;
   day: number; variable: EvaluatedVariable; mapMode: 'confidence' | 'bust';
   onMapModeChange: (mode: 'confidence' | 'bust') => void;
   selectedRegion: string | null; onSelectRegion: (r: string | null) => void;
@@ -80,11 +92,13 @@ export default function IndiaMap({
   }, [day, variable]);
 
   const fillFor = (name: string) => {
+    if (custom) return custom.cell(name)?.fill ?? 'var(--map-unanalysed)';
     const data = info[name];
     if (!data) return 'var(--map-unanalysed)';
     return mapMode === 'confidence' ? confidenceColor(data.confidence) : bustColor(data.bustProbability);
   };
   const labelColor = (name: string) => {
+    if (custom) return custom.cell(name)?.textColor ?? '#64748b';
     const data = info[name];
     if (!data) return '#64748b';
     return mapMode === 'confidence' ? '#ffffff' : bustTextColor(data.bustProbability);
@@ -156,7 +170,8 @@ export default function IndiaMap({
     return rank(a.name) - rank(b.name);
   });
 
-  const tooltip = hoveredRegion ? info[hoveredRegion] : null;
+  const tooltip = hoveredRegion && !custom ? info[hoveredRegion] : null;
+  const customTooltip = hoveredRegion && custom ? custom.cell(hoveredRegion)?.tooltip : null;
   const containerWidth = containerRef.current?.clientWidth ?? 600;
   const flipTooltip = pointer.x > containerWidth - 240;
 
@@ -164,21 +179,24 @@ export default function IndiaMap({
     <div className="card p-4 flex-1 relative overflow-hidden">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">India forecast map</h2>
+          <h2 className="text-sm font-semibold text-slate-900">{custom ? custom.title : 'India forecast map'}</h2>
           <p className="text-[11px] text-slate-500">
-            Day {day} · {variable === 'rainfall' ? 'Rainfall' : 'Temperature'} · {mapMode === 'confidence' ? 'forecast confidence' : 'bust probability'}
+            {custom ? custom.subtitle : `Day ${day} · ${variable === 'rainfall' ? 'Rainfall' : 'Temperature'} · ${mapMode === 'confidence' ? 'forecast confidence' : 'bust probability'}`}
           </p>
         </div>
         <div className="flex p-0.5 bg-slate-100 rounded-lg">
-          {(['confidence', 'bust'] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => onMapModeChange(mode)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${mapMode === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              {mode === 'confidence' ? 'Confidence' : 'Bust probability'}
-            </button>
-          ))}
+          {(custom ? custom.modes : [{ key: 'confidence', label: 'Confidence' }, { key: 'bust', label: 'Bust probability' }]).map((mode) => {
+            const active = custom ? custom.mode === mode.key : mapMode === mode.key;
+            return (
+              <button
+                key={mode.key}
+                onClick={() => (custom ? custom.onModeChange(mode.key) : onMapModeChange(mode.key as 'confidence' | 'bust'))}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                {mode.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -283,7 +301,7 @@ export default function IndiaMap({
         </div>
 
         <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 backdrop-blur shadow-sm border border-slate-200 px-3 py-2">
-          {mapMode === 'confidence' ? (
+          {custom ? custom.legend : mapMode === 'confidence' ? (
             <div className="flex items-center gap-3 text-[11px] text-slate-600">
               {(['high', 'medium', 'low'] as const).map((level) => (
                 <span key={level} className="flex items-center gap-1.5">
@@ -305,12 +323,23 @@ export default function IndiaMap({
 
         <div className="absolute bottom-3 right-3 text-[10px] text-slate-400 hidden md:block">Ctrl + scroll to zoom · drag to pan</div>
 
+        {customTooltip && (
+          <div
+            className="absolute z-20 pointer-events-none"
+            style={{ left: pointer.x, top: pointer.y, transform: `translate(${flipTooltip ? 'calc(-100% - 14px)' : '14px'}, -50%)` }}
+          >
+            <div className="map-tooltip bg-slate-900/95 text-white rounded-xl px-3.5 py-3 shadow-2xl w-60 border border-slate-700/60">
+              {customTooltip}
+            </div>
+          </div>
+        )}
+
         {tooltip && (
           <div
             className="absolute z-20 pointer-events-none"
             style={{ left: pointer.x, top: pointer.y, transform: `translate(${flipTooltip ? 'calc(-100% - 14px)' : '14px'}, -50%)` }}
           >
-            <div className="bg-slate-900/95 text-white rounded-xl px-3.5 py-3 shadow-2xl w-56 border border-slate-700/60">
+            <div className="map-tooltip bg-slate-900/95 text-white rounded-xl px-3.5 py-3 shadow-2xl w-56 border border-slate-700/60">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-semibold text-sm">{tooltip.region}</span>
                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: confidenceColor(tooltip.confidence) }}>

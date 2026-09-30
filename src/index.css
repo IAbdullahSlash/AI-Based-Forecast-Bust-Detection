@@ -173,3 +173,9 @@ body {
 /* The header is dark in both themes, so keep its light-on-dark text. */
 .dark header .text-slate-300 { color: #cbd5e1; }
 .dark header .text-slate-400 { color: #94a3b8; }
+
+/* Map tooltips are dark in both themes. */
+.dark .map-tooltip .text-slate-300 { color: #cbd5e1; }
+.dark .map-tooltip .text-slate-400 { color: #94a3b8; }
+.dark .map-tooltip .text-slate-500 { color: #94a3b8; }
+.dark .bg-gradient-to-r.from-emerald-50\/80 { background-image: linear-gradient(to right, rgb(16 185 129 / 0.14), #0f172a); }
