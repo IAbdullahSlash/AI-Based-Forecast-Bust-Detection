@@ -234,9 +234,9 @@ Dark mode is a `dark` class on `<html>`, set before first paint from the saved p
 
 ## 4. System architecture
 
-[![System architecture](docs/diagrams/system-architecture.png)](docs/diagrams/system-architecture.html)
+[![System architecture](docs/diagrams/system-architecture.png)](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/system-architecture.html?present=1)
 
-<sub>Click the diagram for the interactive version (pan, zoom, trace, export). The source is [`docs/diagrams/system-architecture.architecture.json`](docs/diagrams/system-architecture.architecture.json).</sub>
+**[▶ Open the interactive diagram ↗](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/system-architecture.html?present=1)** · [JSON source](docs/diagrams/system-architecture.architecture.json)
 
 **Key design decisions**
 
@@ -256,7 +256,9 @@ Dark mode is a `dark` class on `<html>`, set before first paint from the saved p
 
 ### 5.1 Real data pipeline
 
-[![Real data pipeline](docs/diagrams/real-data-pipeline.png)](docs/diagrams/real-data-pipeline.html)
+[![Real data pipeline](docs/diagrams/real-data-pipeline.png)](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/real-data-pipeline.html?present=1)
+
+**[▶ Open the interactive diagram ↗](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/real-data-pipeline.html?present=1)** · [JSON source](docs/diagrams/real-data-pipeline.dataflow.json)
 
 1. **Extract.** Four Python scripts read the raw grids and average them over **identical state-boundary masks** (`scripts/state_masks.py` decodes the bundled TopoJSON, and tiny states fall back to the nearest grid cell). Each writes one JSON file to `src/data/`.
 2. **Join.** `verification.ts` pairs NCMRWF forecasts with IMD rainfall on *state + valid date*. File `dayNN` of a run initialised on date D matches IMD date D + NN; this was checked empirically, since ±1 day correlates worse. `tempVerification.ts` does the same for temperature after MOS correction.
@@ -268,7 +270,9 @@ Dark mode is a `dark` class on `<html>`, set before first paint from the saved p
 
 This is the flow of `getRegionData(region, day, variable)` in `src/analysis/forecastEngine.ts`, which drives the synthetic view and `/api/confidence`.
 
-[![Bust probability workflow](docs/diagrams/bust-probability.png)](docs/diagrams/bust-probability.html)
+[![Bust probability workflow](docs/diagrams/bust-probability.png)](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/bust-probability.html?present=1)
+
+**[▶ Open the interactive diagram ↗](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/bust-probability.html?present=1)** · [JSON source](docs/diagrams/bust-probability.workflow.json)
 
 1. **Fingerprint.** `scenario.ts` returns the forecast state for the region and day: rainfall, temperature, wind, pressure, pressure tendency, the dominant weather regime, and the named system and its intensity.
 2. **ML path (60%).** Features (log rainfall intensity, temperature and pressure anomalies vs climatology, wind, |pressure tendency|, lead time, one-hot regime) go into an L2 logistic regression trained in-process on the synthetic archive, with 2023 held out.
@@ -279,7 +283,9 @@ This is the flow of `getRegionData(region, day, variable)` in `src/analysis/fore
 
 ### 5.3 Gemini case briefing
 
-[![Gemini case briefing sequence](docs/diagrams/gemini-briefing.png)](docs/diagrams/gemini-briefing.html)
+[![Gemini case briefing sequence](docs/diagrams/gemini-briefing.png)](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/gemini-briefing.html?present=1)
+
+**[▶ Open the interactive diagram ↗](https://iabdullahslash.github.io/AI-Based-Forecast-Bust-Detection/diagrams/gemini-briefing.html?present=1)** · [JSON source](docs/diagrams/gemini-briefing.sequence.json)
 
 The request carries **identifiers only**. The server validates them (unknown case, region or day → HTTP 400), rebuilds the evidence from `caseStudy.ts`, and sends Gemini an evidence-only prompt. Model settings: `temperature 0.2`, `thinkingLevel: 'low'`, `maxOutputTokens 8192`. Thinking tokens count against that cap, so a small cap truncates the briefing. `thought` parts are filtered out, and a `MAX_TOKENS` finish returns HTTP 502 rather than a truncated paragraph. The synthetic view's `POST /api/gemini/explanation` follows the same pattern and additionally sanitises and truncates every evidence field.
 
