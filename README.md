@@ -18,13 +18,11 @@ Flags *where* and *when* a numerical weather forecast is likely to fail badly (a
 
 ## Walkthrough video
 
-<div align="center">
+<!-- platform-walkthrough-video -->
 
-[![Watch the 71-second platform walkthrough](docs/media/platform-walkthrough-poster.jpg)](docs/media/platform-walkthrough.mp4)
+https://github.com/user-attachments/assets/ac085f85-cfeb-4851-9044-eef667b6c06e
 
-<sub><b>71 s · 1080p · <a href="docs/media/platform-walkthrough.mp4">platform-walkthrough.mp4</a></b> (click the image to play)</sub>
-
-</div>
+<sub><b>71 s · 1080p.</b> Video not playing? <a href="docs/media/platform-walkthrough.mp4">Download platform-walkthrough.mp4</a>.</sub>
 
 One real bust, start to finish. On 6 June 2015 the NCMRWF Day-6 forecast gave Goa **33.2 mm** of rain and **0 mm** fell. The video asks whether the platform could have known:
 
@@ -66,29 +64,27 @@ The walkthrough closes on the headline result: **58 of 93** real rainfall busts 
 
 1. [The problem: what is a forecast bust?](#1-the-problem-what-is-a-forecast-bust)
 2. [Highlights](#2-highlights)
-3. [Real vs synthetic data](#3-real-vs-synthetic-data)
-4. [Platform tour](#4-platform-tour)
-   - [4.1 Real case studies](#41-real-case-studies-jun--sep-2015)
-   - [4.2 Real observations & verification](#42-real-observations--verification)
-   - [4.3 Synthetic 10-day forecast view](#43-synthetic-10-day-forecast-view-jun-2026)
-   - [4.4 Live weather and dark mode](#44-live-weather-and-dark-mode)
-5. [System architecture](#5-system-architecture)
-6. [Backend workflows](#6-backend-workflows)
-   - [6.1 Real data pipeline](#61-real-data-pipeline)
-   - [6.2 Bust probability computation](#62-bust-probability-computation)
-   - [6.3 Gemini case briefing](#63-gemini-case-briefing)
-7. [Methodology in depth](#7-methodology-in-depth)
-8. [JSON API reference](#8-json-api-reference)
-9. [Datasets & ingestion](#9-datasets--ingestion)
-10. [Getting started](#10-getting-started)
-11. [Configuration](#11-configuration)
-12. [Project structure](#12-project-structure)
-13. [Design system](#13-design-system)
-14. [Limitations & honest caveats](#14-limitations--honest-caveats)
-15. [Roadmap](#15-roadmap)
-16. [Tech stack](#16-tech-stack)
-17. [Credits & data sources](#17-credits--data-sources)
-18. [Regenerating the docs assets](#18-regenerating-the-docs-assets)
+3. [Platform tour](#3-platform-tour)
+   - [3.1 Real case studies](#31-real-case-studies-jun--sep-2015)
+   - [3.2 Real observations & verification](#32-real-observations--verification)
+   - [3.3 Live weather and dark mode](#33-live-weather-and-dark-mode)
+4. [System architecture](#4-system-architecture)
+5. [Backend workflows](#5-backend-workflows)
+   - [5.1 Real data pipeline](#51-real-data-pipeline)
+   - [5.2 Bust probability computation](#52-bust-probability-computation)
+   - [5.3 Gemini case briefing](#53-gemini-case-briefing)
+6. [Methodology in depth](#6-methodology-in-depth)
+   - [6.1 Synthetic engine](#61-synthetic-engine)
+   - [6.2 Real-data engine](#62-real-data-engine)
+7. [JSON API reference](#7-json-api-reference)
+8. [Datasets & ingestion](#8-datasets--ingestion)
+9. [Getting started](#9-getting-started)
+10. [Configuration](#10-configuration)
+11. [Project structure](#11-project-structure)
+12. [Design system](#12-design-system)
+13. [Limitations & honest caveats](#13-limitations--honest-caveats)
+14. [Tech stack](#14-tech-stack)
+15. [Credits & data sources](#15-credits--data-sources)
 
 ---
 
@@ -122,29 +118,9 @@ This project answers four questions for **25 Indian states** at **lead times Day
 
 ---
 
-## 3. Real vs synthetic data
+## 3. Platform tour
 
-The UI labels every panel with a **Real data** or **Synthetic data** badge. The split is:
-
-| Component | Status | Source |
-|---|---|---|
-| NCMRWF S2S forecasts (4 runs, day00–10) | ✅ **Real** | rds.ncmrwf.gov.in |
-| IMD 0.25° gridded daily rainfall (2015, 2022–2024) | ✅ **Real** | IMD Pune |
-| IMD 1° gridded daily max temperature (2015, 2022–2024) | ✅ **Real** | IMD Pune |
-| IMDAA 0.12° reanalysis (1–10 Jun & 1–10 Jul 2015) | ✅ **Real** | NCMRWF |
-| Forecast ↔ observation verification join, real bust model, case studies | ✅ **Real** | Computed in-app |
-| Rainfall and temperature June normals | ✅ **Real** | Derived from IMD |
-| Training archive (~6,000 pairs, 2016–2023) | 🧪 Synthetic | `syntheticArchive.ts` (seeded, deterministic) |
-| "Current" 10-day forecast scenario (Jun 2026) | 🧪 Synthetic | `scenario.ts` |
-| Wind and pressure normals, weather-regime labels | 🧪 Synthetic | `regions.ts` |
-
-The synthetic parts exist because there are not yet enough real runs to train and exercise a full 10-day forecast view. They are the plug-in points for more NCMRWF data (see [Roadmap](#15-roadmap)).
-
----
-
-## 4. Platform tour
-
-### 4.1 Real case studies (Jun – Sep 2015)
+### 3.1 Real case studies (Jun – Sep 2015)
 
 Pick any 2015 run in the **Scenario** switch. The page then verifies one real NCMRWF forecast against what IMD observed, day by day. Day *n* = run date + (*n* − 1). The predicted risk comes from a bust model **trained on the other three runs only**, so it never saw the case.
 
@@ -201,7 +177,7 @@ Below the visible area the panel continues with forecast MSLP and pressure chang
 
 The prompt forbids computing, changing or inventing any number, and the UI footer repeats that: *"Written by Gemini from the computed evidence only; it does not change any number."*
 
-See [6.3 Gemini case briefing](#63-gemini-case-briefing) for the request sequence.
+See [5.3 Gemini case briefing](#53-gemini-case-briefing) for the request sequence.
 
 <br clear="right">
 
@@ -209,11 +185,11 @@ See [6.3 Gemini case briefing](#63-gemini-case-briefing) for the request sequenc
 
 ![Temperature case study, Madhya Pradesh Day 6](docs/screenshots/09-case-temperature.png)
 
-Switching **Variable → Temperature** re-scores the same run for maximum temperature. Here Madhya Pradesh is a **missed bust**: forecast 33.8 °C, observed 41.1 °C, with a predicted risk of only 9%. The platform surfaces misses as plainly as hits. Temperature forecasts are S2S 925 hPa temperature corrected to surface Tmax with MOS (see [§7.2](#72-real-data-engine)).
+Switching **Variable → Temperature** re-scores the same run for maximum temperature. Here Madhya Pradesh is a **missed bust**: forecast 33.8 °C, observed 41.1 °C, with a predicted risk of only 9%. The platform surfaces misses as plainly as hits. Temperature forecasts are S2S 925 hPa temperature corrected to surface Tmax with MOS (see [§6.2](#62-real-data-engine)).
 
 ---
 
-### 4.2 Real observations & verification
+### 3.2 Real observations & verification
 
 This section sits below every scenario and uses **only real data**.
 
@@ -244,47 +220,7 @@ Monthly mean state rainfall from IMD 2015 and 2022–2024, with monsoon (JJAS) t
 
 ---
 
-### 4.3 Synthetic 10-day forecast view (Jun 2026)
-
-Choose **Jun 2026** in the Scenario switch to use the platform as an operational forecaster would: a fresh 10-day forecast in which nothing has happened yet.
-
-![Synthetic scenario overview](docs/screenshots/16-synthetic-overview.png)
-
-#### Forecast map and region detail
-
-![Forecast confidence map and region detail, annotated](docs/screenshots/17-synthetic-map-and-detail.png)
-
-| # | Component | Details |
-|---|---|---|
-| **1** | **Map modes** | *Confidence* (High / Medium / Low tiers) or *Bust probability* (continuous 0–70%+ scale) |
-| **2** | **Choropleth** | Click any state to open its detail panel |
-| **3** | **Legend** | Tier colours: green = High, amber = Medium, red = Low confidence |
-| **4** | **Bust-risk ring** | Blended bust probability for the selected state and day |
-| **5** | **Confidence + components** | Confidence tier, the dominant weather system, and the separate **ML model %** and **Analogues %** that were blended 60/40 |
-| **6** | **Forecast / MAE / threshold** | Forecast value, historical MAE at this lead, and the region's bust threshold |
-| **7** | **Error vs lead time** | Historical MAE for Day 1–10 in this region, with the current day highlighted |
-| **8** | **IMD observed (real)** | Real June mean, P99, monsoon total, heavy-rain days, June Tmax, record cell, and the state's real NCMRWF error record |
-| **9** | **Why confidence is …** | Tagged reasons: `System`, `Dynamics`, `Intensity`, `History`, `Lead time`, `Analogues`, `ML model` |
-
-Further down the panel lists the **closest historical analogues** with their similarity and outcome.
-
-#### Bust heatmap, error-prone areas and active systems
-
-![Bust probability heatmap](docs/screenshots/18-bust-heatmap.png)
-
-- **Heatmap:** bust probability for every region × lead day on one screen. Uncertainty visibly grows toward Day 10 and clusters where weather systems are forecast. Click a cell to select that state and day.
-- **Error-prone areas:** regions with ≥ 40% bust probability on at least one day, with the responsible system.
-- **Forecast weather systems:** the named systems active on the selected day and the states they affect (severe cyclonic storm, heat wave, western disturbance, Bay of Bengal low, monsoon onset surge, and so on).
-
-#### Analyst briefing, analogues and model verification
-
-![Analyst briefing, historical analogues, model verification](docs/screenshots/19-explanation-analogues-model.png)
-
-The **Analyst briefing** is a deterministic explanation of the calculation. **Generate with Gemini** turns it into prose. **Historical analogues** lists the most similar past cases (one per event, lead ±1 day). **Bust model verification** reports held-out 2023 metrics for the synthetic model: ROC AUC 0.88, Brier skill 32%, accuracy 82.3% for rainfall.
-
----
-
-### 4.4 Live weather and dark mode
+### 3.3 Live weather and dark mode
 
 ![Live Open-Meteo observations](docs/screenshots/15-live-weather.png)
 
@@ -296,7 +232,7 @@ Dark mode is a `dark` class on `<html>`, set before first paint from the saved p
 
 ---
 
-## 5. System architecture
+## 4. System architecture
 
 [![System architecture](docs/diagrams/system-architecture.png)](docs/diagrams/system-architecture.html)
 
@@ -316,9 +252,9 @@ Dark mode is a `dark` class on `<html>`, set before first paint from the saved p
 
 ---
 
-## 6. Backend workflows
+## 5. Backend workflows
 
-### 6.1 Real data pipeline
+### 5.1 Real data pipeline
 
 [![Real data pipeline](docs/diagrams/real-data-pipeline.png)](docs/diagrams/real-data-pipeline.html)
 
@@ -328,7 +264,7 @@ Dark mode is a `dark` class on `<html>`, set before first paint from the saved p
 4. **Model.** `realModel.ts` fits a logistic bust model **leave-one-run-out**: each run's probabilities come from a model trained on the other three.
 5. **Consume.** `caseStudy.ts` combines the out-of-fold risk, transparent rule flags and IMDAA diagnostics into per-state, per-day case cells. **IMDAA explains outcomes but is never used as a predictor**, since it describes what actually happened.
 
-### 6.2 Bust probability computation
+### 5.2 Bust probability computation
 
 This is the flow of `getRegionData(region, day, variable)` in `src/analysis/forecastEngine.ts`, which drives the synthetic view and `/api/confidence`.
 
@@ -341,7 +277,7 @@ This is the flow of `getRegionData(region, day, variable)` in `src/analysis/fore
 5. **Confidence.** **Low** ≥ 40%, **Medium** 20–40%, **High** < 20%.
 6. **Explain.** Rule-based reasons plus the ML drivers. Gemini can narrate these on demand but never alters them.
 
-### 6.3 Gemini case briefing
+### 5.3 Gemini case briefing
 
 [![Gemini case briefing sequence](docs/diagrams/gemini-briefing.png)](docs/diagrams/gemini-briefing.html)
 
@@ -349,9 +285,9 @@ The request carries **identifiers only**. The server validates them (unknown cas
 
 ---
 
-## 7. Methodology in depth
+## 6. Methodology in depth
 
-### 7.1 Synthetic engine
+### 6.1 Synthetic engine
 
 | Step | Implementation | File |
 |---|---|---|
@@ -374,7 +310,7 @@ The request carries **identifiers only**. The server validates them (unknown cas
 | `Analogues` | How many of the 7 closest analogues busted, and the closest one |
 | `ML model` | Top positive ML feature contributions |
 
-### 7.2 Real-data engine
+### 6.2 Real-data engine
 
 | Component | Details | File |
 |---|---|---|
@@ -387,7 +323,7 @@ The request carries **identifiers only**. The server validates them (unknown cas
 
 ---
 
-## 8. JSON API reference
+## 7. JSON API reference
 
 Start with `npm run server` (or `npm start`) on **port 8787**. All `GET` endpoints return JSON. Invalid parameters return `400 {"error": "..."}`.
 
@@ -437,7 +373,7 @@ curl "http://localhost:8787/api/confidence?day=7&variable=rainfall"
 
 ---
 
-## 9. Datasets & ingestion
+## 8. Datasets & ingestion
 
 Raw data lives in `dataset/` (gitignored; only needed to re-extract):
 
@@ -464,7 +400,7 @@ node scripts/build-map.mjs <india.json>
 
 ---
 
-## 10. Getting started
+## 9. Getting started
 
 ### Prerequisites
 
@@ -519,7 +455,7 @@ There is no separate test runner or linter; `npm run build` (`tsc -b` + `vite bu
 
 ---
 
-## 11. Configuration
+## 10. Configuration
 
 Create `.env` in the project root (it is gitignored):
 
@@ -545,7 +481,7 @@ Google sometimes returns a temporary "high demand" error for Gemini; the UI show
 
 ---
 
-## 12. Project structure
+## 11. Project structure
 
 ```
 bust-detection-forecast/
@@ -583,7 +519,7 @@ bust-detection-forecast/
 │   └── types/index.ts          # Shared types (Confidence, RegionalData, HistoricalAnalogue…)
 ├── scripts/                    # Python extractors + state masks + map builder
 ├── docs/
-│   ├── media/                  # Walkthrough video + poster image
+│   ├── media/                  # Walkthrough video (download fallback)
 │   ├── screenshots/            # README screenshots
 │   └── diagrams/               # Archify sources (.json), interactive HTML and PNGs
 └── dataset/                    # Raw NetCDF/GRD (gitignored, only for re-extraction)
@@ -591,7 +527,7 @@ bust-detection-forecast/
 
 ---
 
-## 13. Design system
+## 12. Design system
 
 All risk colours come from **`src/theme.ts`** and are shared by the map, heatmap, badges and charts.
 
@@ -607,7 +543,7 @@ When you add a colour utility, add its `.dark` override at the end of `src/index
 
 ---
 
-## 14. Limitations & honest caveats
+## 13. Limitations & honest caveats
 
 - **Small real sample.** Four S2S runs (one per month, June–September 2015) is enough to show the method but not enough to prove it. Per-lead and per-state numbers are indicative.
 - **The rainfall model's ranking skill is not yet proven.** Forecast rainfall alone reaches AUC 0.78 vs the full model's 0.75. The extra predictors make probabilities calibrated and explainable, but more runs are needed to show they add ranking skill.
@@ -619,17 +555,7 @@ When you add a colour utility, add its `.dark` override at the end of `src/index
 
 ---
 
-## 15. Roadmap
-
-- [ ] Ingest **daily NCMRWF initialisations over several monsoons**, then replace the synthetic training archive and scenario with real paired records
-- [ ] Extend IMDAA coverage to all case-study periods
-- [ ] Enable **wind** and **pressure** bust detection once matching observations are paired
-- [ ] Learn the temperature MOS per month to remove the June cold bias
-- [ ] Add a test runner and CI (the build is currently the only type check)
-
----
-
-## 16. Tech stack
+## 14. Tech stack
 
 | Layer | Technology |
 |---|---|
@@ -646,30 +572,10 @@ When you add a colour utility, add its `.dark` override at the end of `src/index
 
 ---
 
-## 17. Credits & data sources
+## 15. Credits & data sources
 
 - **NCMRWF** (National Centre for Medium Range Weather Forecasting): S2S Unified Model hindcasts and IMDAA regional reanalysis, via [rds.ncmrwf.gov.in](https://rds.ncmrwf.gov.in)
 - **IMD Pune** (India Meteorological Department): 0.25° gridded daily rainfall and 1° gridded daily maximum temperature
 - **[udit-001/india-maps-data](https://github.com/udit-001/india-maps-data)**: state boundaries following the official Indian boundary
 - **[Open-Meteo](https://open-meteo.com)**: free live weather API
 - **Google Gemini**: narrative briefings
-
----
-
-## 18. Regenerating the docs assets
-
-**Diagrams.** Each diagram in `docs/diagrams/` has a JSON source validated by Archify at showcase quality. To edit one, change the JSON, then validate and re-render:
-
-```bash
-node <archify>/bin/archify.mjs validate workflow docs/diagrams/bust-probability.workflow.json --quality showcase
-```
-
-```bash
-node <archify>/bin/archify.mjs deliver workflow docs/diagrams/bust-probability.workflow.json docs/diagrams/bust-probability.html --quality showcase
-```
-
-The PNGs were captured from the delivered HTML with headless Chrome at 2× scale, with the viewer toolbar hidden.
-
-**Video poster.** `docs/media/platform-walkthrough-poster.jpg` is the frame at 0:03 of the walkthrough with a play button added. If you replace the video, regenerate the poster from the new file so the two stay in sync.
-
-**Screenshots.** The images in `docs/screenshots/` were captured from the running app (`npm start`) at a 1440 × 900 viewport and 2× device scale. Numbered callouts were drawn from DOM-measured element bounds.
